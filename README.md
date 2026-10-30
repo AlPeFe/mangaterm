@@ -128,7 +128,7 @@ Desde la línea de comandos, sin TUI:
 | `hantho ext find [texto] [--lang es] [--sfw]` | Busca extensiones en el catálogo |
 | `hantho ext install <nombre…> [--lang es] [--sfw]` | Instala por nombre/paquete o todas las de un idioma |
 | `hantho ext list` / `ext remove <paquete>` | Lista o desinstala extensiones |
-| `hantho anilist login\|status\|logout` | Maneja la cuenta de AniList |
+| `hantho anilist login\|status\|logout` | Maneja la cuenta de AniList (login por navegador) |
 
 ### Teclas
 
@@ -140,6 +140,7 @@ En todas las listas funcionan `↑`/`↓` y `k`/`j`; `esc` o `q` vuelve atrás; 
 | Biblioteca | `enter` abrir · `d` quitar · `/` buscar |
 | Búsqueda | escribí y `enter` · `tab`/`↓` ir a resultados · `/` editar · `b` biblioteca |
 | Manga | `enter` leer · `c` continuar · `f` favorito · `e` estado · `a` sincronizar AniList · `A` re-vincular · `r` recargar · `g`/`G` primero/último |
+| AniList | `l` iniciar sesión · `o` cerrar sesión · `d` registrar la app (solo si falta el client ID) |
 | Lector | `→` `espacio` `l` siguiente · `←` `h` anterior · `n`/`p` capítulo siguiente/anterior · `g`/`G` primera/última página |
 
 ### Variables de entorno
@@ -150,6 +151,7 @@ En todas las listas funcionan `↑`/`↓` y `k`/`j`; `esc` o `q` vuelve atrás; 
 | `HANTHO_PROTOCOL` | Forzar `sixel`, `kitty`, `iterm2` o `halfblocks` |
 | `HANTHO_FONT` | Tamaño de celda en píxeles, p. ej. `10x20`, si la detección falla |
 | `HANTHO_HOST_LIB` | Ruta a `ext-host/lib` si el binario no está dentro del repo |
+| `HANTHO_ANILIST_CLIENT_ID` | Client ID de AniList propio (solo si tu binario no trae uno) |
 | `JAVA_HOME` | JVM a usar (si no, `java` del `PATH`) |
 
 > El proyecto antes se llamaba *mangaterm*. Si tenés datos en `~/.mangaterm`, se mueven solos a
@@ -159,16 +161,42 @@ En todas las listas funcionan `↑`/`↓` y `k`/`j`; `esc` o `q` vuelve atrás; 
 
 La sincronización es **manual**: vos decidís cuándo mandar el progreso.
 
-1. Creá un *API client* en <https://anilist.co/settings/developer> con Redirect URL
-   `https://anilist.co/api/v2/oauth/pin`.
-2. Corré `hantho anilist login`, pegá el Client ID; se abre el navegador, autorizás y AniList te
-   muestra un token: pegalo en la terminal.
-3. En la TUI, abrí un manga de tu biblioteca y tocá `a`. La primera vez elegís la obra correcta en
-   AniList; después se envían el estado y los capítulos leídos. `A` vuelve a elegir la obra.
+1. **Iniciá sesión.** En la TUI andá a *AniList* desde el menú y tocá `l` (o corré
+   `hantho anilist login`). Se abre el navegador, tocás *Approve* y listo: no hay que copiar ni
+   pegar nada, ni salir de la TUI. `o` cierra la sesión.
+2. **Sincronizá.** Abrí un manga de tu biblioteca y tocá `a`. La primera vez elegís la obra correcta
+   en AniList; después se envían el estado y los capítulos leídos. `A` vuelve a elegir la obra. Si
+   todavía no iniciaste sesión, `a` te lleva a la pantalla de AniList.
 
 El progreso **nunca retrocede**: si AniList tiene más capítulos marcados que Han Thỏ, se conserva
 el de AniList. El token queda en `~/.hantho/anilist.json` (permisos `600` en Linux) y no sale de
 tu máquina más que hacia AniList.
+
+<details>
+<summary><b>Cómo funciona el login</b></summary>
+
+Es el *implicit grant* de OAuth de AniList. Durante el login, Han Thỏ escucha en
+`http://localhost:47913/callback`, **solo en loopback**. AniList redirige ahí con el token en el
+fragmento de la URL (`#access_token=…`), que nunca viaja por la red: la página lo lee, se lo pasa al
+servidor local y lo borra del historial del navegador. El servidor se cierra apenas recibe el token,
+o a los 5 minutos.
+
+</details>
+
+<details>
+<summary><b>Si tu binario no trae client ID (forks, builds propios)</b></summary>
+
+AniList exige que la app esté registrada. Los binarios del proyecto traen su client ID embebido (en
+este flujo no hay secreto, así que el ID es público), y el usuario final no registra nada. Si
+compilás un fork sin ID, la pantalla de AniList te guía para hacer el registro una sola vez:
+
+1. `d` abre <https://anilist.co/settings/developer> → *Create New Client*.
+2. Name `Han Thỏ`, Redirect URL `http://localhost:47913/callback`.
+3. Pegá el ID en la pantalla y `enter`. Queda guardado para la próxima.
+
+También sirve `hantho anilist login --client-id <ID>` o la variable `HANTHO_ANILIST_CLIENT_ID`.
+
+</details>
 
 **Rate limiting y caché.** Han Thỏ hace como mucho 1 pedido cada 2 s a AniList (con ráfagas de 5),
 respeta `Retry-After` y `X-RateLimit-Remaining`, y reintenta con espera ante un 429. Las búsquedas en
