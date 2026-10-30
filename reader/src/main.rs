@@ -1,4 +1,5 @@
 mod anilist;
+mod anilist_auth;
 mod cache;
 mod catalog;
 mod ext;
@@ -44,9 +45,9 @@ enum Cmd {
 
 #[derive(Subcommand)]
 enum AnilistCmd {
-    /// Inicia sesión (abre el navegador y pide pegar el token)
+    /// Inicia sesión: abre el navegador, aprobás y listo (también desde la TUI con `l`)
     Login {
-        /// ID de tu API client de AniList (https://anilist.co/settings/developer)
+        /// Client ID de AniList, si este binario no trae uno (se guarda para la próxima)
         #[arg(long)]
         client_id: Option<String>,
     },
@@ -98,8 +99,22 @@ async fn main() -> Result<()> {
 async fn anilist_cmd(cmd: AnilistCmd) -> Result<()> {
     match cmd {
         AnilistCmd::Login { client_id } => {
-            let creds = anilist::login(client_id).await?;
-            println!("✓ sesión iniciada como {} (token guardado en {})", creds.user_name, paths::anilist_file().display());
+            if let Some(id) = client_id {
+                anilist_auth::save_client_id(&id)?;
+            }
+            let Some(id) = anilist_auth::client_id() else {
+                bail!(
+                    "falta registrar Han Thỏ en AniList (una sola vez):\n  \
+                     1. {} → Create New Client\n  \
+                     2. Name: Han Thỏ · Redirect URL: {}\n  \
+                     3. hantho anilist login --client-id <ID>",
+                    anilist_auth::DEVELOPER_URL,
+                    anilist_auth::REDIRECT
+                );
+            };
+            println!("✿ se abrió el navegador: aprobá el acceso en AniList y volvé acá…");
+            let creds = anilist_auth::login(&id).await?;
+            println!("✓ conectado como @{}", creds.user_name);
         }
         AnilistCmd::Status => match anilist::Credentials::load() {
             Some(c) => match anilist::viewer(&c.token).await {

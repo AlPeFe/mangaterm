@@ -1,8 +1,6 @@
 //! Cliente de AniList (GraphQL).
 //!
-//! Login: OAuth implícito con la redirect URL especial `https://anilist.co/api/v2/oauth/pin`,
-//! que muestra el token en pantalla para copiarlo. Requiere un "API client" propio creado en
-//! https://anilist.co/settings/developer con esa redirect URL.
+//! El login (OAuth por navegador con servidor local) está en `anilist_auth`.
 //!
 //! Para no abusar del servicio (límite ~90/min, a veces 30/min): limitador local de 1 pedido
 //! cada 2 s con ráfagas de 5, respeto de `Retry-After` en 429, freno preventivo cuando
@@ -10,7 +8,7 @@
 
 use crate::cache::{self, RateLimiter};
 use crate::paths;
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{bail, Context, Result};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -18,7 +16,6 @@ use std::sync::LazyLock;
 use std::time::Duration;
 
 const API: &str = "https://graphql.anilist.co";
-pub const PIN_REDIRECT: &str = "https://anilist.co/api/v2/oauth/pin";
 const SEARCH_TTL: Duration = Duration::from_secs(7 * 24 * 3600);
 const MAX_RETRIES: u32 = 3;
 
@@ -225,47 +222,7 @@ pub async fn sync(creds: &Credentials, media_id: i64, status: &str, progress: i3
     Ok(SyncResult { entry, kept_remote_progress })
 }
 
-/// Login interactivo por consola: abre el navegador y pide pegar el token.
-pub async fn login(client_id: Option<String>) -> Result<Credentials> {
-    use std::io::Write;
-    let client_id = match client_id.or_else(|| Credentials::load().map(|c| c.client_id)) {
-        Some(id) => id,
-        None => {
-            println!("Necesitás un API client de AniList (se crea una sola vez):");
-            println!("  1. Entrá a https://anilist.co/settings/developer y tocá 'Create New Client'");
-            println!("  2. Nombre: Han Thỏ · Redirect URL: {PIN_REDIRECT}");
-            println!("  3. Copiá el 'ID' del cliente");
-            prompt("Client ID: ")?
-        }
-    };
-    if client_id.is_empty() || !client_id.chars().all(|c| c.is_ascii_digit()) {
-        bail!("el Client ID es un número");
-    }
-
-    let url = authorize_url(&client_id);
-    println!("\nAbrí este enlace, autorizá a Han Thỏ y copiá el token que muestra AniList:\n  {url}\n");
-    open_browser(&url);
-    let token = prompt("Token: ")?;
-    if token.len() < 20 {
-        bail!("eso no parece un token de AniList");
-    }
-    let (user_id, user_name) = viewer(&token).await.map_err(|e| anyhow!("no se pudo validar el token: {e}"))?;
-    let creds = Credentials { client_id, token, user_id, user_name };
-    creds.save()?;
-    std::io::stdout().flush()?;
-    Ok(creds)
-}
-
-fn prompt(label: &str) -> Result<String> {
-    use std::io::Write;
-    print!("{label}");
-    std::io::stdout().flush()?;
-    let mut line = String::new();
-    std::io::stdin().read_line(&mut line)?;
-    Ok(line.trim().to_string())
-}
-
-fn open_browser(url: &str) {
+pub fn open_browser(url: &str) {
     // No `cmd /C start`: cmd interpreta el `&` de la URL como separador de comandos
     #[cfg(windows)]
     let _ = std::process::Command::new("rundll32").args(["url.dll,FileProtocolHandler", url]).spawn();

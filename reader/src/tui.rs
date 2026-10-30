@@ -4,6 +4,7 @@
 //! vuelve como `Msg` al bucle principal, que es el único que toca el estado y dibuja.
 
 use crate::anilist::{self, Credentials, Media, SyncResult};
+use crate::anilist_auth;
 use crate::ext::Installed;
 use crate::home::{Home, MenuItem};
 use crate::host::{Host, LoadedSource};
@@ -51,6 +52,7 @@ enum Msg {
     AnilistMatches(Result<Vec<Media>>),
     /// (fuente, url del manga, resultado)
     AnilistSynced(String, String, Result<SyncResult>),
+    AnilistLogin(Result<Credentials>),
 }
 
 /// Una página descargada. En modo Sixel se codifica con nuestro render (`render.rs`) para el
@@ -205,6 +207,10 @@ struct App {
     anilist_matches: Option<Vec<Media>>,
     anilist_state: ListState,
     anilist_user: Option<String>,
+    /// Login por navegador en curso.
+    anilist_login: bool,
+    /// Client ID que se está escribiendo (configuración única, si el binario no trae uno).
+    client_input: String,
 
     home: Home,
     /// Tamaño de pantalla del último dibujo (para animar los pétalos).
@@ -258,6 +264,8 @@ impl App {
             anilist_matches: None,
             anilist_state: ListState::default(),
             anilist_user: Credentials::load().map(|c| c.user_name),
+            anilist_login: false,
+            client_input: String::new(),
             home: Home::new(),
             screen_area: Rect::default(),
             tick: 0,
@@ -417,6 +425,16 @@ impl App {
             },
             Msg::AnilistMatches(_) => {}
             Msg::AnilistSynced(source_id, url, res) => self.on_synced(&source_id, &url, res),
+            Msg::AnilistLogin(res) => {
+                self.anilist_login = false;
+                match res {
+                    Ok(creds) => {
+                        self.status = format!("✓ conectado como @{}", creds.user_name);
+                        self.anilist_user = Some(creds.user_name);
+                    }
+                    Err(e) => self.status = format!("✕ AniList: {e}"),
+                }
+            }
         }
     }
 
@@ -436,11 +454,7 @@ impl App {
                 KeyCode::Down | KeyCode::Char('j') => select_next(&mut self.extensions_state, self.installed.len()),
                 _ => {}
             },
-            Screen::AniList => {
-                if matches!(key.code, KeyCode::Esc | KeyCode::Char('q') | KeyCode::Backspace) {
-                    self.screen = Screen::Home;
-                }
-            }
+            Screen::AniList => self.key_anilist(key),
             Screen::Library => self.key_library(key),
             Screen::Search => self.key_search(key),
             Screen::Sources => self.key_sources(key),
@@ -458,11 +472,53 @@ impl App {
             Screen::Search => self.editing || self.pending > 0,
             Screen::Manga => self.details.is_none(),
             Screen::AnilistPick => self.anilist_matches.is_none(),
+            Screen::AniList => self.anilist_login || anilist_auth::client_id().is_none(),
             Screen::Reader => self.reader.as_ref().is_some_and(|r| {
                 r.error.is_none() && r.images.get(&r.page).is_none_or(|p| self.sixel && p.encoded.is_none())
             }),
             _ => false,
         }
+    }
+
+    fn key_anilist(&mut self, key: KeyEvent) {
+        if self.anilist_login {
+            if key.code == KeyCode::Esc {
+                self.status = "login en curso: si cerraste el navegador, se cancela solo a los 5 min".into();
+            }
+            return;
+        }
+        let configured = anilist_auth::client_id().is_some();
+        match key.code {
+            KeyCode::Esc => self.screen = Screen::Home,
+            // Configuración única: escribir/pegar el client ID
+            KeyCode::Char(c) if !configured && c.is_ascii_digit() => self.client_input.push(c),
+            KeyCode::Backspace if !configured => {
+                self.client_input.pop();
+            }
+            KeyCode::Char('d') if !configured => anilist::open_browser(anilist_auth::DEVELOPER_URL),
+            KeyCode::Enter if !configured => match anilist_auth::save_client_id(&self.client_input) {
+                Ok(()) => self.start_anilist_login(),
+                Err(e) => self.status = format!("✕ {e}"),
+            },
+            KeyCode::Char('q') | KeyCode::Backspace => self.screen = Screen::Home,
+            KeyCode::Char('l') | KeyCode::Enter => self.start_anilist_login(),
+            KeyCode::Char('o') if self.anilist_user.is_some() => {
+                Credentials::delete();
+                self.anilist_user = None;
+                self.status = "sesión de AniList cerrada".into();
+            }
+            _ => {}
+        }
+    }
+
+    fn start_anilist_login(&mut self) {
+        let Some(id) = anilist_auth::client_id() else { return };
+        self.anilist_login = true;
+        self.status = "se abrió el navegador: aprobá el acceso en AniList".into();
+        let tx = self.tx.clone();
+        tokio::spawn(async move {
+            let _ = tx.send(Msg::AnilistLogin(anilist_auth::login(&id).await));
+        });
     }
 
     fn key_home(&mut self, key: KeyEvent) {
@@ -846,7 +902,8 @@ impl App {
     /// Sincroniza el favorito actual con AniList. La primera vez (o con `relink`) pide elegir la obra.
     fn anilist_sync(&mut self, relink: bool) {
         if Credentials::load().is_none() {
-            self.status = "no hay sesión de AniList: ejecutá `hantho anilist login` en otra terminal".into();
+            self.status = "conectá tu cuenta de AniList (tecla l)".into();
+            self.screen = Screen::AniList;
             return;
         }
         let Some(fav) = self.current_favorite().cloned() else {
@@ -1199,21 +1256,58 @@ impl App {
                     Span::raw("a").fg(PINK).bold(),
                 ]));
             }
-            None => {
+            None if self.anilist_login => {
+                lines.push(Line::from(vec![
+                    Span::raw(format!("  {} ", theme::spinner(self.tick))).fg(PINK),
+                    Span::raw("esperando que apruebes en el navegador…").fg(TEXT),
+                ]));
+                lines.push(Line::raw(""));
+                lines.push(Line::from("  en la página de AniList tocá «Approve»;").fg(MUTED));
+                lines.push(Line::from("  Han Thỏ recibe la sesión solo, no hace falta copiar nada ✿").fg(MUTED));
+            }
+            None if anilist_auth::client_id().is_some() => {
                 lines.push(Line::from("  sin sesión").fg(TEXT));
                 lines.push(Line::raw(""));
-                lines.push(Line::from("  1. creá un API client en anilist.co/settings/developer").fg(MUTED));
-                lines.push(Line::from("     redirect URL: https://anilist.co/api/v2/oauth/pin").fg(MUTED));
                 lines.push(Line::from(vec![
-                    Span::raw("  2. en otra terminal: ").fg(MUTED),
-                    Span::raw("hantho anilist login").fg(PINK).bold(),
+                    Span::raw("  tocá ").fg(MUTED),
+                    Span::raw("l").fg(PINK).bold(),
+                    Span::raw(" para conectar tu cuenta: se abre el navegador,").fg(MUTED),
                 ]));
-                lines.push(Line::from("  3. volvé acá: la sesión se detecta sola").fg(MUTED));
+                lines.push(Line::from("  aprobás el acceso y listo.").fg(MUTED));
+            }
+            None => {
+                let cursor = if self.tick % 16 < 9 { "▏" } else { " " };
+                lines.push(Line::from("  configuración única: registrar Han Thỏ en AniList").fg(TEXT));
+                lines.push(Line::raw(""));
+                lines.push(Line::from(vec![
+                    Span::raw("  1. tocá ").fg(MUTED),
+                    Span::raw("d").fg(PINK).bold(),
+                    Span::raw(" (abre anilist.co/settings/developer) → Create New Client").fg(MUTED),
+                ]));
+                lines.push(Line::from(vec![
+                    Span::raw("  2. Name: ").fg(MUTED),
+                    Span::raw("Han Thỏ").fg(TEXT),
+                    Span::raw("  ·  Redirect URL: ").fg(MUTED),
+                    Span::raw(anilist_auth::REDIRECT).fg(LAVENDER),
+                ]));
+                lines.push(Line::from("  3. pegá acá el ID del client y enter:").fg(MUTED));
+                lines.push(Line::raw(""));
+                lines.push(Line::from(vec![
+                    Span::raw("     ID: ").fg(MUTED),
+                    Span::raw(self.client_input.clone()).fg(PINK).bold(),
+                    Span::raw(cursor).fg(PINK),
+                ]));
             }
         }
         f.render_widget(Clear, card);
         f.render_widget(Paragraph::new(lines).block(theme::block_focused("☁ anilist")), card);
-        theme::status_bar(f, status_area, "ANILIST", &self.status, &[("esc", "menú")]);
+        let keys: &[(&str, &str)] = match (&self.anilist_user, anilist_auth::client_id().is_some()) {
+            _ if self.anilist_login => &[("esc", "menú")],
+            (Some(_), _) => &[("l", "reconectar"), ("o", "cerrar sesión"), ("esc", "menú")],
+            (None, true) => &[("l", "conectar"), ("esc", "menú")],
+            (None, false) => &[("d", "abrir AniList"), ("enter", "guardar y conectar"), ("esc", "menú")],
+        };
+        theme::status_bar(f, status_area, "ANILIST", &self.status, keys);
     }
 
     fn draw_anilist_pick(&mut self, f: &mut Frame) {

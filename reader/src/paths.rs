@@ -53,6 +53,11 @@ pub fn anilist_file() -> PathBuf {
     home().join("anilist.json")
 }
 
+/// Client ID de AniList configurado localmente (si el binario no trae uno).
+pub fn anilist_client_file() -> PathBuf {
+    home().join("anilist-client-id")
+}
+
 /// Caché en disco de respuestas (AniList, detalles de manga).
 pub fn http_cache() -> PathBuf {
     home().join("cache").join("api")
