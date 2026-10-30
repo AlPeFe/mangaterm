@@ -40,7 +40,21 @@ que ejecuta las extensiones de Mihon/Keiyoushi.
 | Toon-es | bloqueado por Cloudflare |
 | Olympus, InManga | sin resultados |
 
+## Búsqueda global "grand blue" con las 156 extensiones en español (165 fuentes)
+- Carga de las 165 fuentes en ~0,6 s; búsqueda completa en ~25 s (lo limita el timeout de las fuentes lentas).
+- "Grand Blue" aparece en ~20 fuentes (MangaTV, LectorTMO, ManhwaWeb, Kumanga, Zonatmo, TmoManhwa, LeerCapitulo, HeavenManga…).
+- 31 fallos. Pendientes del host:
+  - 12 × Cloudflare (sin WebView).
+  - `android.webkit.CookieManager` (5), `android.util.LruCache`, `android.graphics.ColorMatrix`.
+  - `Dispatchers.Main` no disponible (3): falta un dispatcher Main en la JVM.
+  - `android.net.Uri.buildUpon()` / `Uri.Builder` (2) y un campo de `android.os.Build`.
+
 ## Render
+- ratatui-image escala con `FilterType::Nearest` y codifica Sixel con Floyd-Steinberg al 0,875, sin opción
+  de cambiarlo: en manga produce moiré en las tramas y ruido. Por eso `reader/src/render.rs` hace su propio Sixel:
+  Lanczos3 al tamaño exacto en píxeles + 64 grises sin dithering (páginas B/N) o 256 colores con dithering 0,3.
+  Se escribe a stdout después de cada frame, en una zona donde ratatui no dibuja. Codificar una página tarda ~25 ms.
+- ratatui-image se sigue usando para detectar el protocolo y el tamaño de celda, y como fallback (kitty/iterm2/halfblocks).
 - Windows Terminal 1.24 soporta Sixel.
 - Página de 1063x1506 escalada a 700px de ancho: ~1.1 MB de Sixel, ~0.5 s con el prototipo en Python (`tools/sixel_test.py`).
 
