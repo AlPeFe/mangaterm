@@ -1,0 +1,7 @@
+build/
+.gradle/
+.kotlin/
+tools/out/
+tools/sample.jpg
+*.jar
+!ext-host/gradle/wrapper/gradle-wrapper.jar
