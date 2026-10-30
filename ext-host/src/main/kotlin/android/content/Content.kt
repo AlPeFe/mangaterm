@@ -7,15 +7,15 @@
 package android.content
 
 import android.net.Uri
-import mangaterm.host.FilePrefs
-import mangaterm.host.HostDirs
+import hantho.host.FilePrefs
+import hantho.host.HostDirs
 import java.io.File
 
 abstract class Context {
     open fun getSharedPreferences(name: String, mode: Int): SharedPreferences = FilePrefs.of(name)
     open fun getCacheDir(): File = HostDirs.cache
     open fun getFilesDir(): File = HostDirs.data
-    open fun getPackageName(): String = "app.mangaterm"
+    open fun getPackageName(): String = "app.hantho"
     open fun getApplicationContext(): Context = this
     open fun startActivity(intent: Intent): Unit = throw ActivityNotFoundException()
 }

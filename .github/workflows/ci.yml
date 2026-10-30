@@ -42,7 +42,7 @@ jobs:
       - name: Compilar y testear reader
         working-directory: reader
         env:
-          MANGATERM_HOME: ${{ runner.temp }}/mangaterm
+          HANTHO_HOME: ${{ runner.temp }}/hantho
         run: |
           cargo build --release
           cargo test --release
@@ -52,7 +52,7 @@ jobs:
         continue-on-error: true
         working-directory: reader
         env:
-          MANGATERM_HOME: ${{ runner.temp }}/mangaterm
+          HANTHO_HOME: ${{ runner.temp }}/hantho
         run: |
-          ./target/release/mangaterm ext install mangadex
-          ./target/release/mangaterm search "grand blue"
+          ./target/release/hantho ext install mangadex
+          ./target/release/hantho search "grand blue"

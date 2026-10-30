@@ -13,7 +13,7 @@ from PIL import Image
 
 def load(src: str) -> Image.Image:
     if src.startswith("http"):
-        req = urllib.request.Request(src, headers={"User-Agent": "mangaterm-sixel-test"})
+        req = urllib.request.Request(src, headers={"User-Agent": "hantho-sixel-test"})
         return Image.open(io.BytesIO(urllib.request.urlopen(req).read()))
     return Image.open(src)
 

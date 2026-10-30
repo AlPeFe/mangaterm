@@ -1,4 +1,4 @@
-//! Extensiones instaladas: JARs en `~/.mangaterm/extensions` + `installed.json` con sus metadatos.
+//! Extensiones instaladas: JARs en `~/.hantho/extensions` + `installed.json` con sus metadatos.
 
 use crate::catalog::Extension;
 use crate::paths;

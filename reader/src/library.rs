@@ -1,5 +1,5 @@
 //! Biblioteca local: favoritos, progreso de lectura y vínculo con AniList.
-//! Se guarda en `~/.mangaterm/library.json`.
+//! Se guarda en `~/.hantho/library.json`.
 
 use crate::model::{Chapter, Manga};
 use crate::paths;

@@ -1,4 +1,4 @@
-package mangaterm.host
+package hantho.host
 
 import android.app.Application
 import android.content.SharedPreferences
@@ -20,7 +20,7 @@ import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 
 object HostDirs {
-    val root: File = (System.getenv("MANGATERM_HOME")?.let(::File) ?: File(System.getProperty("user.home"), ".mangaterm"))
+    val root: File = (System.getenv("HANTHO_HOME")?.let(::File) ?: File(System.getProperty("user.home"), ".hantho"))
     val data = File(root, "data").apply { mkdirs() }
     val cache = File(root, "cache").apply { mkdirs() }
     val prefs = File(data, "prefs").apply { mkdirs() }

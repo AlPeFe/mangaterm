@@ -27,5 +27,5 @@ kotlin {
 }
 
 application {
-    mainClass.set("mangaterm.host.MainKt")
+    mainClass.set("hantho.host.MainKt")
 }

@@ -17,9 +17,9 @@ use clap::{Parser, Subcommand};
 use host::Host;
 use search::SearchEvent;
 
-/// Lector de manga para la terminal, con extensiones de Mihon/Keiyoushi.
+/// Han Thỏ: lector de manga para la terminal, con extensiones de Mihon/Keiyoushi y sync con AniList.
 #[derive(Parser)]
-#[command(name = "mangaterm", version)]
+#[command(name = "hantho", version)]
 struct Cli {
     #[command(subcommand)]
     cmd: Option<Cmd>,
@@ -85,7 +85,9 @@ enum ExtCmd {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    match Cli::parse().cmd {
+    let cli = Cli::parse();
+    paths::migrate_legacy();
+    match cli.cmd {
         None => tui::run().await,
         Some(Cmd::Search { query, lang }) => cli_search(query, lang).await,
         Some(Cmd::Ext(cmd)) => ext_cmd(cmd).await,
@@ -104,7 +106,7 @@ async fn anilist_cmd(cmd: AnilistCmd) -> Result<()> {
                 Ok((_, name)) => println!("✓ conectado como {name}"),
                 Err(e) => println!("✗ {} (token guardado, pero {e})", c.user_name),
             },
-            None => println!("sin sesión; usá `mangaterm anilist login`"),
+            None => println!("sin sesión; usá `hantho anilist login`"),
         },
         AnilistCmd::Logout => {
             anilist::Credentials::delete();
@@ -117,7 +119,7 @@ async fn anilist_cmd(cmd: AnilistCmd) -> Result<()> {
 async fn cli_search(query: String, lang: Option<String>) -> Result<()> {
     let installed = ext::list();
     if installed.is_empty() {
-        bail!("no hay extensiones instaladas; probá `mangaterm ext install --lang es`");
+        bail!("no hay extensiones instaladas; probá `hantho ext install --lang es`");
     }
     let started = std::time::Instant::now();
     let host = Host::spawn().await?;

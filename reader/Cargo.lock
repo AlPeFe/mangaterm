@@ -1094,6 +1094,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "hantho"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "dirs",
+ "flate2",
+ "futures",
+ "icy_sixel",
+ "image",
+ "prost",
+ "ratatui",
+ "ratatui-image",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "hashbrown"
 version = "0.17.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1655,26 +1675,6 @@ checksum = "f3d0581a75c45969c63afd2bb87b1d8b25cfcc556c7a918cf9bb13b0fe8d2381"
 dependencies = [
  "nix 0.31.3",
  "windows-sys 0.61.2",
-]
-
-[[package]]
-name = "mangaterm"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "clap",
- "dirs",
- "flate2",
- "futures",
- "icy_sixel",
- "image",
- "prost",
- "ratatui",
- "ratatui-image",
- "reqwest",
- "serde",
- "serde_json",
- "tokio",
 ]
 
 [[package]]

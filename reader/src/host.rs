@@ -43,8 +43,8 @@ impl Host {
             // Arranque rápido: el host hace poco cómputo, el JIT completo no compensa
             .args(["-XX:+UseSerialGC", "-XX:TieredStopAtLevel=1", "-Xshare:auto", "-Dfile.encoding=UTF-8", "-cp"])
             .arg(lib.join("*"))
-            .arg("mangaterm.host.MainKt")
-            .env("MANGATERM_HOME", paths::home())
+            .arg("hantho.host.MainKt")
+            .env("HANTHO_HOME", paths::home())
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::from(log))
@@ -161,10 +161,10 @@ fn find_java() -> PathBuf {
     PathBuf::from("java")
 }
 
-/// Directorio `lib` de ext-host: `$MANGATERM_HOST_LIB`, o `ext-host/build/install/ext-host/lib`
+/// Directorio `lib` de ext-host: `$HANTHO_HOST_LIB`, o `ext-host/build/install/ext-host/lib`
 /// buscando hacia arriba desde el ejecutable (cubre `cargo run` dentro del repo).
 fn find_host_lib() -> Result<PathBuf> {
-    if let Some(dir) = std::env::var_os("MANGATERM_HOST_LIB") {
+    if let Some(dir) = std::env::var_os("HANTHO_HOST_LIB") {
         return Ok(PathBuf::from(dir));
     }
     let exe = std::env::current_exe()?;
@@ -175,5 +175,5 @@ fn find_host_lib() -> Result<PathBuf> {
             }
         }
     }
-    bail!("no encontré ext-host; compilalo con `gradlew installDist` o definí MANGATERM_HOST_LIB")
+    bail!("no encontré ext-host; compilalo con `gradlew installDist` o definí HANTHO_HOST_LIB")
 }

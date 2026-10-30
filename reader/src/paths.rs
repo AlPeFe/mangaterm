@@ -1,11 +1,27 @@
-//! Rutas de datos. Todo vive en `~/.mangaterm` (o `$MANGATERM_HOME`), compartido con ext-host.
+//! Rutas de datos. Todo vive en `~/.hantho` (o `$HANTHO_HOME`), compartido con ext-host.
 
 use std::path::PathBuf;
 
 pub fn home() -> PathBuf {
-    std::env::var_os("MANGATERM_HOME")
+    std::env::var_os("HANTHO_HOME")
         .map(PathBuf::from)
-        .unwrap_or_else(|| dirs::home_dir().expect("sin directorio home").join(".mangaterm"))
+        .unwrap_or_else(|| dirs::home_dir().expect("sin directorio home").join(".hantho"))
+}
+
+/// El proyecto antes se llamaba "mangaterm": si existe `~/.mangaterm` y todavía no hay
+/// `~/.hantho`, se mueve tal cual (extensiones, biblioteca, sesión de AniList y caché).
+pub fn migrate_legacy() {
+    if std::env::var_os("HANTHO_HOME").is_some() {
+        return;
+    }
+    let Some(user_home) = dirs::home_dir() else { return };
+    let (old, new) = (user_home.join(".mangaterm"), home());
+    if old.is_dir() && !new.exists() {
+        match std::fs::rename(&old, &new) {
+            Ok(()) => eprintln!("✿ datos movidos de {} a {}", old.display(), new.display()),
+            Err(e) => eprintln!("no se pudieron mover los datos de {}: {e}", old.display()),
+        }
+    }
 }
 
 pub fn index_file() -> PathBuf {

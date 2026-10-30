@@ -6,7 +6,7 @@ import android.content.Context
 import android.widget.EditText
 
 // La pantalla de ajustes de la extensión se "dibuja" en memoria: el host la recorre
-// para exponer las opciones (y sus valores por defecto) a mangaterm.
+// para exponer las opciones (y sus valores por defecto) a Han Thỏ.
 
 open class Preference(private val context: Context) {
     open var key: String? = null

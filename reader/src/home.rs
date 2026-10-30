@@ -10,22 +10,35 @@ use ratatui::Frame;
 use std::time::Instant;
 
 /// Letras en estilo "ANSI Shadow" (6 filas). Se arman por letra para que todas las filas midan igual.
-const GLYPHS: [(char, [&str; 6]); 7] = [
-    ('m', ["███╗   ███╗", "████╗ ████║", "██╔████╔██║", "██║╚██╔╝██║", "██║ ╚═╝ ██║", "╚═╝     ╚═╝"]),
+const GLYPHS: [(char, [&str; 6]); 6] = [
+    ('h', ["██╗  ██╗", "██║  ██║", "███████║", "██╔══██║", "██║  ██║", "╚═╝  ╚═╝"]),
     ('a', [" █████╗ ", "██╔══██╗", "███████║", "██╔══██║", "██║  ██║", "╚═╝  ╚═╝"]),
     ('n', ["███╗   ██╗", "████╗  ██║", "██╔██╗ ██║", "██║╚██╗██║", "██║ ╚████║", "╚═╝  ╚═══╝"]),
-    ('g', [" ██████╗ ", "██╔════╝ ", "██║  ███╗", "██║   ██║", "╚██████╔╝", " ╚═════╝ "]),
     ('t', ["████████╗", "╚══██╔══╝", "   ██║   ", "   ██║   ", "   ██║   ", "   ╚═╝   "]),
-    ('e', ["███████╗", "██╔════╝", "█████╗  ", "██╔══╝  ", "███████╗", "╚══════╝"]),
-    ('r', ["██████╗ ", "██╔══██╗", "██████╔╝", "██╔══██╗", "██║  ██║", "╚═╝  ╚═╝"]),
+    ('o', [" ██████╗ ", "██╔═══██╗", "██║   ██║", "██║   ██║", "╚██████╔╝", " ╚═════╝ "]),
+    (' ', ["   ", "   ", "   ", "   ", "   ", "   "]),
 ];
 
+/// Filas extra arriba de las letras para los diacríticos (el gancho del dấu hỏi de "ỏ").
+const ACCENT_ROWS: usize = 2;
+const HOOK: [&str; ACCENT_ROWS] = ["   ▀▀▄   ", "    ▀    "];
+
 fn logo_rows(word: &str) -> Vec<Vec<char>> {
-    let mut rows = vec![Vec::new(); 6];
+    let mut rows = vec![Vec::new(); ACCENT_ROWS + 6];
     for ch in word.chars() {
-        if let Some((_, glyph)) = GLYPHS.iter().find(|(c, _)| *c == ch) {
-            for (row, part) in rows.iter_mut().zip(glyph) {
-                row.extend(part.chars());
+        let (base, accent) = match ch {
+            'ỏ' => ('o', Some(HOOK)),
+            c => (c, None),
+        };
+        let Some((_, glyph)) = GLYPHS.iter().find(|(c, _)| *c == base) else { continue };
+        let width = glyph[0].chars().count();
+        for (i, row) in rows.iter_mut().enumerate() {
+            match i.checked_sub(ACCENT_ROWS) {
+                Some(g) => row.extend(glyph[g].chars()),
+                None => match accent {
+                    Some(a) => row.extend(a[i].chars()),
+                    None => row.extend(std::iter::repeat_n(' ', width)),
+                },
             }
         }
     }
@@ -58,7 +71,7 @@ pub struct Home {
 
 impl Home {
     pub fn new() -> Self {
-        Home { started: Instant::now(), petals: Vec::new(), seed: 0x9e37_79b9_7f4a_7c15, logo: logo_rows("mangaterm"), selected: 0 }
+        Home { started: Instant::now(), petals: Vec::new(), seed: 0x9e37_79b9_7f4a_7c15, logo: logo_rows("han thỏ"), selected: 0 }
     }
 
     /// Generador pseudoaleatorio mínimo (xorshift): no hace falta nada criptográfico para pétalos.
@@ -110,8 +123,8 @@ impl Home {
         draw_petals(f.buffer_mut(), area, &self.petals);
 
         let logo_w = self.logo[0].len() as u16;
-        let big = area.width >= logo_w + 4 && area.height >= 26;
-        let logo_h = if big { 6 } else { 1 };
+        let big = area.width >= logo_w + 4 && area.height >= 28;
+        let logo_h = if big { self.logo.len() as u16 } else { 1 };
         let menu_h = items.len() as u16 + 2;
         let [_, logo_area, tag_area, _, menu_area, _, footer_area] = Layout::vertical([
             Constraint::Fill(1),
@@ -130,7 +143,7 @@ impl Home {
             let [logo_area] = Layout::horizontal([Constraint::Length(logo_w)]).flex(Flex::Center).areas(logo_area);
             draw_logo(f.buffer_mut(), logo_area, &self.logo, t, reveal);
         } else {
-            let title = Line::from(vec![Span::raw("✿ ").fg(PINK), Span::raw("mangaterm").fg(PINK).bold(), Span::raw(" ✿").fg(PINK)]);
+            let title = Line::from(vec![Span::raw("✿ ").fg(PINK), Span::raw("Han Thỏ").fg(PINK).bold(), Span::raw(" ✿").fg(PINK)]);
             f.render_widget(Paragraph::new(title).centered(), logo_area);
         }
 
@@ -195,7 +208,8 @@ fn draw_logo(buf: &mut Buffer, area: Rect, rows: &[Vec<char>], t: f32, reveal: f
                 continue;
             }
             let cell = &mut buf[(area.x + x as u16, area.y + y as u16)];
-            let color = if ch == '█' {
+            // El gancho del dấu hỏi (medios bloques) va con el mismo degradé que las letras
+            let color = if matches!(ch, '█' | '▀' | '▄') {
                 let wave = ((x as f32 / width) * std::f32::consts::TAU + t * 1.2 - y as f32 * 0.25).sin() * 0.5 + 0.5;
                 let base = mix(PINK, LAVENDER, wave);
                 let glow = (1.0 - ((x as f32 + y as f32 * 1.5 - shine).abs() / 4.0)).max(0.0);
@@ -216,10 +230,10 @@ mod tests {
 
     /// Dibuja el menú en un backend de prueba y vuelca las celdas (carácter + colores) a JSON,
     /// para poder mirar el diseño sin terminal. Uso:
-    /// MANGATERM_PREVIEW=<archivo.json> cargo test --release home_preview
+    /// HANTHO_PREVIEW=<archivo.json> cargo test --release home_preview
     #[test]
     fn home_preview() {
-        let Ok(out) = std::env::var("MANGATERM_PREVIEW") else { return };
+        let Ok(out) = std::env::var("HANTHO_PREVIEW") else { return };
         let mut terminal = Terminal::new(TestBackend::new(120, 34)).unwrap();
         let mut home = Home::new();
         home.selected = 1;

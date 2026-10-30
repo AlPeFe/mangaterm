@@ -131,10 +131,10 @@ mod tests {
 
     /// Compara nuestro render con el de ratatui-image (Nearest + dithering fuerte), decodificando
     /// ambos Sixel de vuelta a PNG. Uso:
-    /// MANGATERM_TEST_PAGE=<imagen> MANGATERM_TEST_OUT=<dir> cargo test --release render_compare -- --nocapture
+    /// HANTHO_TEST_PAGE=<imagen> HANTHO_TEST_OUT=<dir> cargo test --release render_compare -- --nocapture
     #[test]
     fn render_compare() {
-        let (Ok(page), Ok(out)) = (std::env::var("MANGATERM_TEST_PAGE"), std::env::var("MANGATERM_TEST_OUT")) else {
+        let (Ok(page), Ok(out)) = (std::env::var("HANTHO_TEST_PAGE"), std::env::var("HANTHO_TEST_OUT")) else {
             return;
         };
         let out = std::path::PathBuf::from(out);

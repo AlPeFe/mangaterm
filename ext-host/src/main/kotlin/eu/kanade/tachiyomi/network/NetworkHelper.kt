@@ -36,7 +36,7 @@ class NetworkHelper(context: Context) {
 class HttpException(val code: Int) : IllegalStateException("HTTP error $code")
 
 class JavaScriptEngine(@Suppress("UNUSED_PARAMETER") context: Context) {
-    suspend fun <T> evaluate(script: String): T = throw UnsupportedOperationException("JavaScriptEngine no soportado en mangaterm")
+    suspend fun <T> evaluate(script: String): T = throw UnsupportedOperationException("JavaScriptEngine no soportado en Han Thỏ")
 }
 
 /** Convierte excepciones no-IO en IOException para que OkHttp no tire abajo el hilo (como en Mihon). */

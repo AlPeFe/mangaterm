@@ -72,12 +72,12 @@ pub async fn run() -> Result<()> {
 
 /// Detecta el protocolo gráfico. Windows Terminal soporta Sixel pero no siempre contesta la
 /// consulta, así que si estamos en WT y la detección falla, forzamos Sixel.
-/// `MANGATERM_PROTOCOL` (sixel|kitty|iterm2|halfblocks) y `MANGATERM_FONT` (p. ej. 10x20) lo pisan.
+/// `HANTHO_PROTOCOL` (sixel|kitty|iterm2|halfblocks) y `HANTHO_FONT` (p. ej. 10x20) lo pisan.
 fn make_picker() -> Picker {
-    let font = std::env::var("MANGATERM_FONT")
+    let font = std::env::var("HANTHO_FONT")
         .ok()
         .and_then(|s| s.split_once('x').and_then(|(w, h)| Some((w.parse().ok()?, h.parse().ok()?))));
-    let forced = std::env::var("MANGATERM_PROTOCOL").ok().and_then(|p| match p.as_str() {
+    let forced = std::env::var("HANTHO_PROTOCOL").ok().and_then(|p| match p.as_str() {
         "sixel" => Some(ProtocolType::Sixel),
         "kitty" => Some(ProtocolType::Kitty),
         "iterm2" => Some(ProtocolType::Iterm2),
@@ -336,7 +336,7 @@ impl App {
                 self.status = format!("{} fuentes listas", sources.len())
                     + &if errors > 0 { format!(" ({errors} extensiones no cargaron)") } else { String::new() };
                 if sources.is_empty() {
-                    self.status = "no hay extensiones: instalá con `mangaterm ext install --lang es`".into();
+                    self.status = "no hay extensiones: instalá con `hantho ext install --lang es`".into();
                 }
                 self.host = Some(host);
                 self.sources = sources;
@@ -846,7 +846,7 @@ impl App {
     /// Sincroniza el favorito actual con AniList. La primera vez (o con `relink`) pide elegir la obra.
     fn anilist_sync(&mut self, relink: bool) {
         if Credentials::load().is_none() {
-            self.status = "no hay sesión de AniList: ejecutá `mangaterm anilist login` en otra terminal".into();
+            self.status = "no hay sesión de AniList: ejecutá `hantho anilist login` en otra terminal".into();
             return;
         }
         let Some(fav) = self.current_favorite().cloned() else {
@@ -1170,7 +1170,7 @@ impl App {
             f,
             status_area,
             "EXTENSIONES",
-            "instalá más con `mangaterm ext install <nombre>` o `--lang es`",
+            "instalá más con `hantho ext install <nombre>` o `--lang es`",
             &[("↑↓", "mover"), ("esc", "menú")],
         );
     }
@@ -1206,7 +1206,7 @@ impl App {
                 lines.push(Line::from("     redirect URL: https://anilist.co/api/v2/oauth/pin").fg(MUTED));
                 lines.push(Line::from(vec![
                     Span::raw("  2. en otra terminal: ").fg(MUTED),
-                    Span::raw("mangaterm anilist login").fg(PINK).bold(),
+                    Span::raw("hantho anilist login").fg(PINK).bold(),
                 ]));
                 lines.push(Line::from("  3. volvé acá: la sesión se detecta sola").fg(MUTED));
             }
@@ -1577,10 +1577,10 @@ mod tests {
     }
 
     /// Previsualiza biblioteca y manga como JSON (ver tools/preview.py). Uso:
-    /// MANGATERM_PREVIEW_DIR=<dir> cargo test --release screens_preview
+    /// HANTHO_PREVIEW_DIR=<dir> cargo test --release screens_preview
     #[test]
     fn screens_preview() {
-        let Ok(dir) = std::env::var("MANGATERM_PREVIEW_DIR") else { return };
+        let Ok(dir) = std::env::var("HANTHO_PREVIEW_DIR") else { return };
         let mut app = App::new(Picker::halfblocks());
         app.library.favorites = vec![
             fake_favorite("Grand Blue", Status::Current, 12, true, false),

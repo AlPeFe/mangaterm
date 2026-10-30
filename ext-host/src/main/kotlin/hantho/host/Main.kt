@@ -1,4 +1,4 @@
-package mangaterm.host
+package hantho.host
 
 import eu.kanade.tachiyomi.network.awaitSuccess
 import eu.kanade.tachiyomi.source.CatalogueSource

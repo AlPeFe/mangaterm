@@ -25,7 +25,7 @@ const MAX_RETRIES: u32 = 3;
 static LIMITER: LazyLock<RateLimiter> = LazyLock::new(|| RateLimiter::new(5, Duration::from_secs(2)));
 static HTTP: LazyLock<reqwest::Client> = LazyLock::new(|| {
     reqwest::Client::builder()
-        .user_agent(concat!("mangaterm/", env!("CARGO_PKG_VERSION")))
+        .user_agent(concat!("hantho/", env!("CARGO_PKG_VERSION")))
         .timeout(Duration::from_secs(20))
         .build()
         .expect("cliente HTTP")
@@ -133,7 +133,7 @@ async fn graphql<T: DeserializeOwned>(query: &str, variables: Value, token: Opti
         if let Some(err) = value["errors"].as_array().and_then(|e| e.first()) {
             let msg = err["message"].as_str().unwrap_or("error desconocido");
             if status.as_u16() == 401 || msg.contains("Invalid token") {
-                bail!("el token de AniList venció o es inválido; volvé a hacer `mangaterm anilist login`");
+                bail!("el token de AniList venció o es inválido; volvé a hacer `hantho anilist login`");
             }
             bail!("AniList: {msg}");
         }
@@ -233,7 +233,7 @@ pub async fn login(client_id: Option<String>) -> Result<Credentials> {
         None => {
             println!("Necesitás un API client de AniList (se crea una sola vez):");
             println!("  1. Entrá a https://anilist.co/settings/developer y tocá 'Create New Client'");
-            println!("  2. Nombre: mangaterm · Redirect URL: {PIN_REDIRECT}");
+            println!("  2. Nombre: Han Thỏ · Redirect URL: {PIN_REDIRECT}");
             println!("  3. Copiá el 'ID' del cliente");
             prompt("Client ID: ")?
         }
@@ -243,7 +243,7 @@ pub async fn login(client_id: Option<String>) -> Result<Credentials> {
     }
 
     let url = authorize_url(&client_id);
-    println!("\nAbrí este enlace, autorizá a mangaterm y copiá el token que muestra AniList:\n  {url}\n");
+    println!("\nAbrí este enlace, autorizá a Han Thỏ y copiá el token que muestra AniList:\n  {url}\n");
     open_browser(&url);
     let token = prompt("Token: ")?;
     if token.len() < 20 {
