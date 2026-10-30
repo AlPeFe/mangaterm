@@ -4,8 +4,11 @@
 //! vuelve como `Msg` al bucle principal, que es el único que toca el estado y dibuja.
 
 use crate::anilist::{self, Credentials, Media, SyncResult};
+use crate::ext::Installed;
+use crate::home::{Home, MenuItem};
 use crate::host::{Host, LoadedSource};
 use crate::library::{AniListLink, LastRead, Library, Status};
+use crate::theme::{self, ERROR, FAINT, LAVENDER, MINT, MUTED, ON_PINK, PEACH, PINK, TEXT};
 use crate::model::{Chapter, Manga, MangaDetails, Page};
 use crate::paths;
 use crate::render::{self, Encoded};
@@ -14,10 +17,10 @@ use anyhow::Result;
 use image::imageops::FilterType;
 use image::DynamicImage;
 use ratatui::crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
-use ratatui::layout::{Constraint, Layout, Rect};
-use ratatui::style::{Color, Modifier, Style, Stylize};
+use ratatui::layout::{Constraint, Flex, Layout, Rect};
+use ratatui::style::Stylize;
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, BorderType, List, ListItem, ListState, Paragraph, Wrap};
+use ratatui::widgets::{Clear, List, ListItem, ListState, Paragraph, Wrap};
 use ratatui::{DefaultTerminal, Frame};
 use ratatui_image::picker::{Picker, ProtocolType};
 use ratatui_image::protocol::StatefulProtocol;
@@ -36,6 +39,8 @@ const KEEP_AROUND: usize = 8;
 
 enum Msg {
     Key(KeyEvent),
+    /// Paso de animación (~20 por segundo).
+    Tick,
     Resize,
     HostReady(Result<(Arc<Host>, Vec<LoadedSource>, usize)>),
     Search(u64, SearchEvent),
@@ -98,7 +103,10 @@ fn make_picker() -> Picker {
 
 #[derive(PartialEq, Clone, Copy)]
 enum Screen {
+    Home,
     Library,
+    Extensions,
+    AniList,
     Search,
     Sources,
     Manga,
@@ -196,6 +204,16 @@ struct App {
     library_state: ListState,
     anilist_matches: Option<Vec<Media>>,
     anilist_state: ListState,
+    anilist_user: Option<String>,
+
+    home: Home,
+    /// Tamaño de pantalla del último dibujo (para animar los pétalos).
+    screen_area: Rect,
+    tick: u64,
+    /// Hay que redibujar. Los ticks solo marcan esto en pantallas animadas.
+    dirty: bool,
+    installed: Vec<Installed>,
+    extensions_state: ListState,
 }
 
 impl App {
@@ -204,6 +222,7 @@ impl App {
         let font = picker.font_size();
         let library = Library::load();
         let has_favorites = !library.favorites.is_empty();
+        let installed = crate::ext::list();
         App {
             sixel: picker.protocol_type() == ProtocolType::Sixel,
             font: (font.width, font.height),
@@ -214,15 +233,14 @@ impl App {
             rx,
             host: None,
             sources: Vec::new(),
-            // Con favoritos se arranca en la biblioteca; si no, directo a buscar
-            screen: if has_favorites { Screen::Library } else { Screen::Search },
+            screen: Screen::Home,
             status: "cargando extensiones…".into(),
             quit: false,
             clear: false,
             generation: 0,
             search_gen: 0,
             input: String::new(),
-            editing: !has_favorites,
+            editing: false,
             query: String::new(),
             groups: Vec::new(),
             groups_state: ListState::default(),
@@ -239,11 +257,25 @@ impl App {
             library,
             anilist_matches: None,
             anilist_state: ListState::default(),
+            anilist_user: Credentials::load().map(|c| c.user_name),
+            home: Home::new(),
+            screen_area: Rect::default(),
+            tick: 0,
+            dirty: true,
+            extensions_state: ListState::default().with_selected((!installed.is_empty()).then_some(0)),
+            installed,
         }
     }
 
     async fn run(mut self, terminal: &mut DefaultTerminal) -> Result<()> {
         spawn_input(self.tx.clone());
+        let tick_tx = self.tx.clone();
+        tokio::spawn(async move {
+            let mut every = tokio::time::interval(Duration::from_millis(50));
+            while tick_tx.send(Msg::Tick).is_ok() {
+                every.tick().await;
+            }
+        });
         let tx = self.tx.clone();
         tokio::spawn(async move {
             let res = async {
@@ -259,9 +291,15 @@ impl App {
             if std::mem::take(&mut self.clear) {
                 terminal.clear()?;
                 self.sixel_drawn = None;
+                self.dirty = true;
             }
-            terminal.draw(|f| self.draw(f))?;
-            self.flush_sixel()?;
+            if std::mem::take(&mut self.dirty) {
+                terminal.draw(|f| {
+                    self.screen_area = f.area();
+                    self.draw(f)
+                })?;
+                self.flush_sixel()?;
+            }
             let Some(msg) = self.rx.recv().await else { break };
             self.update(msg);
             // Procesar todo lo acumulado antes de redibujar (las búsquedas llegan en ráfagas)
@@ -275,7 +313,23 @@ impl App {
     // ───────────────────────────── eventos ─────────────────────────────
 
     fn update(&mut self, msg: Msg) {
+        if !matches!(msg, Msg::Tick) {
+            self.dirty = true;
+        }
         match msg {
+            Msg::Tick => {
+                self.tick += 1;
+                if self.screen == Screen::Home {
+                    self.home.tick(self.screen_area);
+                }
+                // La sesión de AniList se inicia en otra terminal: detectarla sola
+                if self.screen == Screen::AniList && self.tick % 40 == 0 {
+                    self.anilist_user = Credentials::load().map(|c| c.user_name);
+                }
+                if self.animated() {
+                    self.dirty = true;
+                }
+            }
             Msg::Key(key) => self.on_key(key),
             Msg::Resize => self.clear = true,
             Msg::HostReady(Ok((host, sources, errors))) => {
@@ -375,6 +429,18 @@ impl App {
             return;
         }
         match self.screen {
+            Screen::Home => self.key_home(key),
+            Screen::Extensions => match key.code {
+                KeyCode::Esc | KeyCode::Char('q') | KeyCode::Backspace => self.screen = Screen::Home,
+                KeyCode::Up | KeyCode::Char('k') => select_prev(&mut self.extensions_state),
+                KeyCode::Down | KeyCode::Char('j') => select_next(&mut self.extensions_state, self.installed.len()),
+                _ => {}
+            },
+            Screen::AniList => {
+                if matches!(key.code, KeyCode::Esc | KeyCode::Char('q') | KeyCode::Backspace) {
+                    self.screen = Screen::Home;
+                }
+            }
             Screen::Library => self.key_library(key),
             Screen::Search => self.key_search(key),
             Screen::Sources => self.key_sources(key),
@@ -384,10 +450,64 @@ impl App {
         }
     }
 
+    /// Pantallas con algo en movimiento: solo ahí los ticks redibujan.
+    /// (En el lector con la página ya en pantalla nunca: redibujar borraría el Sixel.)
+    fn animated(&self) -> bool {
+        match self.screen {
+            Screen::Home => true,
+            Screen::Search => self.editing || self.pending > 0,
+            Screen::Manga => self.details.is_none(),
+            Screen::AnilistPick => self.anilist_matches.is_none(),
+            Screen::Reader => self.reader.as_ref().is_some_and(|r| {
+                r.error.is_none() && r.images.get(&r.page).is_none_or(|p| self.sixel && p.encoded.is_none())
+            }),
+            _ => false,
+        }
+    }
+
+    fn key_home(&mut self, key: KeyEvent) {
+        const ITEMS: usize = 5;
+        let choice = match key.code {
+            KeyCode::Char('q') | KeyCode::Esc => {
+                self.quit = true;
+                return;
+            }
+            KeyCode::Up | KeyCode::Char('k') => {
+                self.home.selected = (self.home.selected + ITEMS - 1) % ITEMS;
+                return;
+            }
+            KeyCode::Down | KeyCode::Char('j') | KeyCode::Tab => {
+                self.home.selected = (self.home.selected + 1) % ITEMS;
+                return;
+            }
+            KeyCode::Char(c @ '1'..='5') => c as usize - '1' as usize,
+            KeyCode::Enter => self.home.selected,
+            KeyCode::Char('/') => 1,
+            _ => return,
+        };
+        self.home.selected = choice;
+        match choice {
+            0 => self.screen = Screen::Library,
+            1 => {
+                self.screen = Screen::Search;
+                self.editing = true;
+            }
+            2 => {
+                self.installed = crate::ext::list();
+                self.screen = Screen::Extensions;
+            }
+            3 => {
+                self.anilist_user = Credentials::load().map(|c| c.user_name);
+                self.screen = Screen::AniList;
+            }
+            _ => self.quit = true,
+        }
+    }
+
     fn key_library(&mut self, key: KeyEvent) {
         let len = self.library.favorites.len();
         match key.code {
-            KeyCode::Char('q') => self.quit = true,
+            KeyCode::Esc | KeyCode::Char('q') => self.screen = Screen::Home,
             KeyCode::Char('/') | KeyCode::Char('s') | KeyCode::Tab => {
                 self.screen = Screen::Search;
                 self.editing = true;
@@ -457,15 +577,15 @@ impl App {
                 KeyCode::Backspace => {
                     self.input.pop();
                 }
-                KeyCode::Esc if !self.groups.is_empty() => self.editing = false,
+                KeyCode::Esc => self.screen = Screen::Home,
                 KeyCode::Down | KeyCode::Tab if !self.groups.is_empty() => self.editing = false,
                 _ => {}
             }
             return;
         }
         match key.code {
-            KeyCode::Char('q') => self.quit = true,
-            KeyCode::Char('/') | KeyCode::Char('s') | KeyCode::Esc => self.editing = true,
+            KeyCode::Char('q') | KeyCode::Esc => self.screen = Screen::Home,
+            KeyCode::Char('/') | KeyCode::Char('s') => self.editing = true,
             KeyCode::Char('b') | KeyCode::Tab => self.screen = Screen::Library,
             KeyCode::Up | KeyCode::Char('k') => select_prev(&mut self.groups_state),
             KeyCode::Down | KeyCode::Char('j') => select_next(&mut self.groups_state, self.groups.len()),
@@ -921,51 +1041,194 @@ impl App {
 
     fn draw(&mut self, f: &mut Frame) {
         match self.screen {
+            Screen::Home => self.draw_home(f),
             Screen::Library => self.draw_library(f),
             Screen::Search => self.draw_search(f),
             Screen::Sources => self.draw_sources(f),
             Screen::Manga => self.draw_manga(f),
             Screen::Reader => self.draw_reader(f),
             Screen::AnilistPick => self.draw_anilist_pick(f),
+            Screen::Extensions => self.draw_extensions(f),
+            Screen::AniList => self.draw_anilist(f),
         }
     }
 
+    fn menu_items(&self) -> Vec<MenuItem> {
+        let favs = self.library.favorites.len();
+        let pending = self.library.favorites.iter().filter(|f| f.needs_sync()).count();
+        let sources = if self.host.is_some() { format!("{} fuentes", self.sources.len()) } else { "cargando…".into() };
+        let anilist = match &self.anilist_user {
+            Some(name) if pending > 0 => format!("@{name} · {pending} sin sincronizar"),
+            Some(name) => format!("@{name}"),
+            None => "sin sesión".into(),
+        };
+        vec![
+            MenuItem { icon: "♡", label: "Biblioteca", detail: format!("{favs} favoritos") },
+            MenuItem { icon: "⌕", label: "Buscar", detail: sources },
+            MenuItem { icon: "✦", label: "Extensiones", detail: format!("{} instaladas", self.installed.len()) },
+            MenuItem { icon: "☁", label: "AniList", detail: anilist },
+            MenuItem { icon: "✕", label: "Salir", detail: String::new() },
+        ]
+    }
+
+    fn draw_home(&mut self, f: &mut Frame) {
+        let items = self.menu_items();
+        let footer = if self.host.is_none() {
+            Line::from(vec![
+                Span::raw(theme::spinner(self.tick)).fg(PINK),
+                Span::raw(" cargando extensiones…").fg(MUTED),
+            ])
+        } else {
+            Line::from(vec![
+                Span::raw("↑↓").fg(PINK).bold(),
+                Span::raw(" elegir  ").fg(MUTED),
+                Span::raw("enter").fg(PINK).bold(),
+                Span::raw(" abrir  ").fg(MUTED),
+                Span::raw("1-5").fg(PINK).bold(),
+                Span::raw(" atajos  ").fg(MUTED),
+                Span::raw("q").fg(PINK).bold(),
+                Span::raw(" salir").fg(MUTED),
+            ])
+        };
+        self.home.draw(f, &items, footer);
+    }
+
     fn draw_library(&mut self, f: &mut Frame) {
-        let [list_area, status_area] = Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(f.area());
+        let [main, status_area] = Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(f.area());
+        let title = format!("♡ biblioteca · {}", self.library.favorites.len());
+        if self.library.favorites.is_empty() {
+            let msg = vec![
+                Line::raw(""),
+                Line::from("todavía no hay favoritos").fg(TEXT).centered(),
+                Line::raw(""),
+                Line::from(vec![
+                    Span::raw("buscá un manga con ").fg(MUTED),
+                    Span::raw("/").fg(PINK).bold(),
+                    Span::raw(", abrilo y tocá ").fg(MUTED),
+                    Span::raw("f").fg(PINK).bold(),
+                    Span::raw(" para guardarlo acá ✿").fg(MUTED),
+                ])
+                .centered(),
+            ];
+            f.render_widget(Paragraph::new(msg).block(theme::block_focused(&title)), main);
+        } else {
+            let [list_area, card_area] =
+                Layout::horizontal([Constraint::Percentage(55), Constraint::Percentage(45)]).areas(main);
+            let items: Vec<ListItem> = self
+                .library
+                .favorites
+                .iter()
+                .map(|fav| {
+                    let sync = match &fav.anilist {
+                        None => Span::raw("  "),
+                        Some(_) if fav.needs_sync() => Span::raw(" ↻").fg(PEACH),
+                        Some(_) => Span::raw(" ✓").fg(MINT),
+                    };
+                    ListItem::new(Line::from(vec![
+                        Span::raw(fav.manga.title.clone()).fg(TEXT),
+                        Span::raw(format!("  cap. {}", fav.progress)).fg(MUTED),
+                        sync,
+                    ]))
+                })
+                .collect();
+            f.render_stateful_widget(
+                theme::highlight(List::new(items).block(theme::block_focused(&title))),
+                list_area,
+                &mut self.library_state,
+            );
+            if let Some(fav) = self.library_state.selected().and_then(|i| self.library.favorites.get(i)) {
+                f.render_widget(favorite_card(fav), card_area);
+            }
+        }
+        theme::status_bar(f, status_area, "BIBLIOTECA", &self.status, &[("enter", "abrir"), ("d", "quitar"), ("/", "buscar"), ("esc", "menú")]);
+    }
+
+    fn draw_extensions(&mut self, f: &mut Frame) {
+        let [main, status_area] = Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(f.area());
         let items: Vec<ListItem> = self
-            .library
-            .favorites
+            .installed
             .iter()
-            .map(|fav| {
-                let anilist = match &fav.anilist {
-                    None => Span::raw("  AniList: –").fg(Color::DarkGray),
-                    Some(_) if fav.needs_sync() => Span::raw("  AniList: ↻ sin sincronizar").fg(Color::Yellow),
-                    Some(_) => Span::raw("  AniList: ✓").fg(Color::Green),
+            .map(|e| {
+                let (label, color) = match e.content_warning {
+                    3 => ("nsfw", ERROR),
+                    2 => ("mixto", PEACH),
+                    _ => ("apto", MINT),
                 };
+                let loaded = self.sources.iter().any(|s| s.info.name == e.name);
                 ListItem::new(Line::from(vec![
-                    Span::raw("★ ").fg(Color::Yellow),
-                    Span::raw(fav.manga.title.clone()).bold(),
-                    Span::raw(format!("  {} · {} · cap. {}", fav.source_name, fav.status.label(), fav.progress)).fg(Color::Gray),
-                    anilist,
+                    Span::raw(if loaded { "● " } else { "○ " }).fg(if loaded { MINT } else { FAINT }),
+                    Span::raw(format!("{:<34}", e.name)).fg(TEXT),
+                    Span::raw(format!("{:<9}", e.version_name)).fg(MUTED),
+                    Span::raw(format!("{:<8}", e.langs.join(","))).fg(LAVENDER),
+                    Span::raw(label).fg(color),
                 ]))
             })
             .collect();
-        let title = format!(" mangaterm · biblioteca ({}) ", self.library.favorites.len());
-        if items.is_empty() {
-            let msg = "Todavía no hay favoritos.\n\nBuscá un manga (tecla /), abrilo y tocá 'f' para guardarlo acá.";
-            f.render_widget(Paragraph::new(msg).fg(Color::DarkGray).block(block(&title)), list_area);
-        } else {
-            f.render_stateful_widget(highlight(List::new(items).block(block(&title))), list_area, &mut self.library_state);
+        let title = format!("✦ extensiones · {} instaladas · {} fuentes cargadas", self.installed.len(), self.sources.len());
+        f.render_stateful_widget(theme::highlight(List::new(items).block(theme::block_focused(&title))), main, &mut self.extensions_state);
+        theme::status_bar(
+            f,
+            status_area,
+            "EXTENSIONES",
+            "instalá más con `mangaterm ext install <nombre>` o `--lang es`",
+            &[("↑↓", "mover"), ("esc", "menú")],
+        );
+    }
+
+    fn draw_anilist(&mut self, f: &mut Frame) {
+        let [main, status_area] = Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(f.area());
+        let [card] = Layout::horizontal([Constraint::Length(72.min(main.width))]).flex(Flex::Center).areas(main);
+        let [card] = Layout::vertical([Constraint::Length(16.min(card.height))]).flex(Flex::Center).areas(card);
+        let linked = self.library.favorites.iter().filter(|f| f.anilist.is_some()).count();
+        let pending = self.library.favorites.iter().filter(|f| f.needs_sync()).count();
+        let mut lines = vec![Line::raw("")];
+        match &self.anilist_user {
+            Some(name) => {
+                lines.push(Line::from(vec![Span::raw("  conectado como ").fg(MUTED), Span::raw(format!("@{name}")).fg(PINK).bold()]));
+                lines.push(Line::raw(""));
+                lines.push(Line::from(vec![Span::raw("  ✓ ").fg(MINT), Span::raw(format!("{linked} favoritos vinculados")).fg(TEXT)]));
+                let pending_line = if pending > 0 {
+                    vec![Span::raw("  ↻ ").fg(PEACH), Span::raw(format!("{pending} con cambios sin sincronizar")).fg(TEXT)]
+                } else {
+                    vec![Span::raw("  ✓ ").fg(MINT), Span::raw("todo sincronizado").fg(TEXT)]
+                };
+                lines.push(Line::from(pending_line));
+                lines.push(Line::raw(""));
+                lines.push(Line::from(vec![
+                    Span::raw("  para sincronizar, abrí un favorito y tocá ").fg(MUTED),
+                    Span::raw("a").fg(PINK).bold(),
+                ]));
+            }
+            None => {
+                lines.push(Line::from("  sin sesión").fg(TEXT));
+                lines.push(Line::raw(""));
+                lines.push(Line::from("  1. creá un API client en anilist.co/settings/developer").fg(MUTED));
+                lines.push(Line::from("     redirect URL: https://anilist.co/api/v2/oauth/pin").fg(MUTED));
+                lines.push(Line::from(vec![
+                    Span::raw("  2. en otra terminal: ").fg(MUTED),
+                    Span::raw("mangaterm anilist login").fg(PINK).bold(),
+                ]));
+                lines.push(Line::from("  3. volvé acá: la sesión se detecta sola").fg(MUTED));
+            }
         }
-        status_line(f, status_area, &self.status, "enter abrir · d quitar · / buscar · q salir");
+        f.render_widget(Clear, card);
+        f.render_widget(Paragraph::new(lines).block(theme::block_focused("☁ anilist")), card);
+        theme::status_bar(f, status_area, "ANILIST", &self.status, &[("esc", "menú")]);
     }
 
     fn draw_anilist_pick(&mut self, f: &mut Frame) {
         let [list_area, status_area] = Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(f.area());
         let manga = self.current.as_ref().map(|(_, m)| m.title.clone()).unwrap_or_default();
-        let title = format!(" ¿Cuál es «{manga}» en AniList? ");
+        let title = format!("☁ ¿cuál es «{manga}» en AniList?");
         match &self.anilist_matches {
-            None => f.render_widget(Paragraph::new("buscando en AniList…").fg(Color::DarkGray).block(block(&title)), list_area),
+            None => f.render_widget(
+                Paragraph::new(Line::from(vec![
+                    Span::raw(theme::spinner(self.tick)).fg(PINK),
+                    Span::raw(" buscando en AniList…").fg(MUTED),
+                ]))
+                .block(theme::block_focused(&title)),
+                list_area,
+            ),
             Some(list) => {
                 let items: Vec<ListItem> = list
                     .iter()
@@ -974,66 +1237,72 @@ impl App {
                         let chapters = m.chapters.map(|c| format!(" · {c} caps")).unwrap_or_default();
                         let english = m.title.english.clone().filter(|e| Some(e) != m.title.romaji.as_ref());
                         ListItem::new(Line::from(vec![
-                            Span::raw(m.display_title()).bold(),
-                            Span::raw(english.map(|e| format!("  ({e})")).unwrap_or_default()).fg(Color::Gray),
-                            Span::raw(format!(
-                                "  {} {year}{chapters}",
-                                m.format.clone().unwrap_or_default()
-                            ))
-                            .fg(Color::DarkGray),
+                            Span::raw(m.display_title()).fg(TEXT).bold(),
+                            Span::raw(english.map(|e| format!("  ({e})")).unwrap_or_default()).fg(LAVENDER),
+                            Span::raw(format!("  {} {year}{chapters}", m.format.clone().unwrap_or_default())).fg(MUTED),
                         ]))
                     })
                     .collect();
-                f.render_stateful_widget(highlight(List::new(items).block(block(&title))), list_area, &mut self.anilist_state);
+                f.render_stateful_widget(
+                    theme::highlight(List::new(items).block(theme::block_focused(&title))),
+                    list_area,
+                    &mut self.anilist_state,
+                );
             }
         }
-        status_line(f, status_area, "elegí la obra para vincular", "↑↓ mover · enter vincular y sincronizar · esc cancelar");
+        theme::status_bar(f, status_area, "ANILIST", "elegí la obra para vincular", &[("enter", "vincular y sincronizar"), ("esc", "cancelar")]);
     }
 
     fn draw_search(&mut self, f: &mut Frame) {
         let [input_area, list_area, status_area] =
             Layout::vertical([Constraint::Length(3), Constraint::Min(1), Constraint::Length(1)]).areas(f.area());
 
-        let input_style = if self.editing { Style::new().fg(Color::Yellow) } else { Style::new() };
-        let cursor = if self.editing { "▏" } else { "" };
-        f.render_widget(
-            Paragraph::new(format!("{}{cursor}", self.input))
-                .block(block(" mangaterm · buscar ").border_style(input_style)),
-            input_area,
-        );
+        let input = if self.input.is_empty() && self.editing {
+            Line::from(vec![Span::raw("▏").fg(PINK), Span::raw("¿qué querés leer hoy?").fg(FAINT).italic()])
+        } else {
+            let cursor = if self.editing && self.tick % 16 < 9 { "▏" } else { " " };
+            Line::from(vec![Span::raw(self.input.clone()).fg(TEXT), Span::raw(cursor).fg(PINK)])
+        };
+        let input_block = if self.editing { theme::block_focused("⌕ buscar") } else { theme::block("⌕ buscar") };
+        f.render_widget(Paragraph::new(input).block(input_block), input_area);
 
         let items: Vec<ListItem> = self
             .groups
             .iter()
             .map(|g| {
-                let names: Vec<&str> = g.entries.iter().map(|(s, _)| s.info.name.as_str()).take(4).collect();
-                let more = g.entries.len().saturating_sub(4);
+                let names: Vec<&str> = g.entries.iter().map(|(s, _)| s.info.name.as_str()).take(3).collect();
+                let more = g.entries.len().saturating_sub(3);
                 let mut spans = vec![
-                    Span::raw(g.title.clone()).bold(),
+                    Span::raw(g.title.clone()).fg(TEXT).bold(),
                     Span::raw("  "),
-                    Span::raw(names.join(" · ")).fg(Color::DarkGray),
+                    Span::raw(names.join(" · ")).fg(MUTED),
                 ];
                 if more > 0 {
-                    spans.push(Span::raw(format!(" +{more}")).fg(Color::DarkGray));
+                    spans.push(Span::raw(format!(" +{more}")).fg(LAVENDER));
                 }
                 ListItem::new(Line::from(spans))
             })
             .collect();
         let title = if self.query.is_empty() {
-            " resultados ".to_string()
+            "resultados".to_string()
         } else {
-            format!(" «{}» · {} títulos ", self.query, self.groups.len())
+            format!("«{}» · {} títulos", self.query, self.groups.len())
         };
-        f.render_stateful_widget(highlight(List::new(items).block(block(&title))), list_area, &mut self.groups_state);
+        let list_block = if self.editing { theme::block(&title) } else { theme::block_focused(&title) };
+        f.render_stateful_widget(theme::highlight(List::new(items).block(list_block)), list_area, &mut self.groups_state);
 
         let mut status = self.status.clone();
         if self.pending > 0 {
-            status = format!("buscando… faltan {} fuentes", self.pending);
+            status = format!("{} buscando… faltan {} fuentes", theme::spinner(self.tick), self.pending);
         } else if !self.query.is_empty() && !self.failures.is_empty() {
             status = format!("{status} · {} fuentes fallaron", self.failures.len());
         }
-        let help = if self.editing { "enter buscar · ↓ resultados · ctrl+c salir" } else { "↑↓ mover · enter abrir · / buscar · q salir" };
-        status_line(f, status_area, &status, help);
+        let keys: &[(&str, &str)] = if self.editing {
+            &[("enter", "buscar"), ("↓", "resultados"), ("esc", "menú")]
+        } else {
+            &[("enter", "abrir"), ("/", "editar"), ("b", "biblioteca"), ("esc", "menú")]
+        };
+        theme::status_bar(f, status_area, "BUSCAR", &status, keys);
     }
 
     fn draw_sources(&mut self, f: &mut Frame) {
@@ -1044,75 +1313,107 @@ impl App {
             .iter()
             .map(|(s, m)| {
                 ListItem::new(Line::from(vec![
-                    Span::raw(format!("{:<28}", s.info.name)).bold(),
-                    Span::raw(format!(" {:<4} ", s.info.lang)).fg(Color::Cyan),
-                    Span::raw(m.title.clone()).fg(Color::DarkGray),
+                    Span::raw(format!("{:<28}", s.info.name)).fg(TEXT).bold(),
+                    Span::raw(format!(" {:<4} ", s.info.lang)).fg(LAVENDER),
+                    Span::raw(m.title.clone()).fg(MUTED),
                 ]))
             })
             .collect();
-        let title = format!(" {} · {} fuentes ", g.title, g.entries.len());
-        f.render_stateful_widget(highlight(List::new(items).block(block(&title))), list_area, &mut self.sources_state);
-        status_line(f, status_area, "elegí una fuente", "↑↓ mover · enter abrir · esc volver");
+        let title = format!("{} · en {} fuentes", g.title, g.entries.len());
+        f.render_stateful_widget(theme::highlight(List::new(items).block(theme::block_focused(&title))), list_area, &mut self.sources_state);
+        theme::status_bar(f, status_area, "FUENTE", "elegí de dónde leerlo", &[("enter", "abrir"), ("esc", "volver")]);
     }
 
     fn draw_manga(&mut self, f: &mut Frame) {
         let Some((source, manga)) = &self.current else { return };
         let [info_area, list_area, status_area] =
-            Layout::vertical([Constraint::Length(7), Constraint::Min(1), Constraint::Length(1)]).areas(f.area());
+            Layout::vertical([Constraint::Length(8), Constraint::Min(1), Constraint::Length(1)]).areas(f.area());
 
         let m = self.details.as_ref().map(|d| &d.manga).unwrap_or(manga);
         let title = if m.title.is_empty() { &manga.title } else { &m.title };
         let mut lines = vec![Line::from(vec![
-            Span::raw(title.clone()).bold().fg(Color::Yellow),
-            Span::raw(format!("  {} ({})", source.info.name, source.info.lang)).fg(Color::DarkGray),
+            Span::raw(title.clone()).fg(PINK).bold(),
+            Span::raw(format!("  {} · {}", source.info.name, source.info.lang)).fg(MUTED),
         ])];
+        let mut meta = Vec::new();
         if let Some(author) = m.author.as_ref().filter(|a| !a.is_empty()) {
-            lines.push(Line::from(format!("autor: {author}")).fg(Color::Cyan));
+            meta.push(Span::raw(format!("✎ {author}")).fg(LAVENDER));
         }
         if let Some(genre) = m.genre.as_ref().filter(|g| !g.is_empty()) {
-            lines.push(Line::from(genre.clone()).fg(Color::DarkGray));
+            meta.push(Span::raw(format!("   {genre}")).fg(MUTED));
+        }
+        if !meta.is_empty() {
+            lines.push(Line::from(meta));
         }
         match self.current_favorite() {
             Some(fav) => {
                 let anilist = match &fav.anilist {
-                    None => Span::raw("AniList: sin vincular ('a' para vincular)").fg(Color::DarkGray),
-                    Some(link) if fav.needs_sync() => {
-                        Span::raw(format!("AniList: {} · cambios sin sincronizar ('a')", link.title)).fg(Color::Yellow)
-                    }
-                    Some(link) => Span::raw(format!("AniList: {} · sincronizado", link.title)).fg(Color::Green),
+                    None => Span::raw("  ☁ sin vincular").fg(FAINT),
+                    Some(_) if fav.needs_sync() => Span::raw("  ☁ ↻ cambios sin sincronizar").fg(PEACH),
+                    Some(link) => Span::raw(format!("  ☁ ✓ {}", link.title)).fg(MINT),
                 };
                 lines.push(Line::from(vec![
-                    Span::raw("★ favorito").fg(Color::Yellow),
-                    Span::raw(format!(" · {} · leídos: {} · ", fav.status.label(), fav.progress)),
+                    Span::raw(" ♥ favorito ").bg(PINK).fg(ON_PINK).bold(),
+                    Span::raw(" "),
+                    Span::raw(format!(" {} ", fav.status.label())).bg(theme::status_color(fav.status)).fg(ON_PINK),
+                    Span::raw(format!("  leídos: {}", fav.progress)).fg(TEXT),
                     anilist,
                 ]));
             }
-            None => lines.push(Line::from("☆ no está en favoritos ('f' para agregar)").fg(Color::DarkGray)),
+            None => lines.push(Line::from(vec![
+                Span::raw("♡ ").fg(FAINT),
+                Span::raw("no está en favoritos · ").fg(MUTED),
+                Span::raw("f").fg(PINK).bold(),
+                Span::raw(" para agregarlo").fg(MUTED),
+            ])),
         }
         if let Some(desc) = &m.description {
-            lines.push(Line::from(desc.replace(['\n', '\r'], " ")));
+            lines.push(Line::from(desc.replace(['\n', '\r'], " ")).fg(MUTED));
         }
-        f.render_widget(Paragraph::new(lines).wrap(Wrap { trim: true }).block(block(" manga ")), info_area);
+        f.render_widget(Paragraph::new(lines).wrap(Wrap { trim: true }).block(theme::block("manga")), info_area);
 
+        let last_read = self.current_favorite().and_then(|f| f.last_read.as_ref()).map(|l| l.chapter_url.clone());
         match &self.details {
-            None => f.render_widget(Paragraph::new("cargando capítulos…").block(block(" capítulos ")), list_area),
+            None => f.render_widget(
+                Paragraph::new(Line::from(vec![
+                    Span::raw(theme::spinner(self.tick)).fg(PINK),
+                    Span::raw(" cargando capítulos…").fg(MUTED),
+                ]))
+                .block(theme::block_focused("capítulos")),
+                list_area,
+            ),
             Some(d) => {
                 let items: Vec<ListItem> = d
                     .chapters
                     .iter()
                     .map(|c| {
-                        let mut spans = vec![Span::raw(c.name.clone())];
+                        let marker = if last_read.as_deref() == Some(c.url.as_str()) {
+                            Span::raw("▸ ").fg(PINK)
+                        } else {
+                            Span::raw("  ")
+                        };
+                        let mut spans = vec![marker, Span::raw(c.name.clone()).fg(TEXT)];
                         if let Some(s) = c.scanlator.as_ref().filter(|s| !s.is_empty()) {
-                            spans.push(Span::raw(format!("  {s}")).fg(Color::DarkGray));
+                            spans.push(Span::raw(format!("  {s}")).fg(FAINT));
                         }
                         ListItem::new(Line::from(spans))
                     })
                     .collect();
-                let title = format!(" {} capítulos ", d.chapters.len());
-                f.render_stateful_widget(highlight(List::new(items).block(block(&title))), list_area, &mut self.chapters_state);
+                let title = format!("capítulos · {}", d.chapters.len());
+                f.render_stateful_widget(
+                    theme::highlight(List::new(items).block(theme::block_focused(&title))),
+                    list_area,
+                    &mut self.chapters_state,
+                );
             }
         }
-        status_line(f, status_area, &self.status, "enter leer · c continuar · f favorito · e estado · a AniList · r recargar · esc");
+        theme::status_bar(
+            f,
+            status_area,
+            "MANGA",
+            &self.status,
+            &[("enter", "leer"), ("c", "continuar"), ("f", "fav"), ("e", "estado"), ("a", "anilist"), ("esc", "volver")],
+        );
     }
 
     fn draw_reader(&mut self, f: &mut Frame) {
@@ -1126,7 +1427,7 @@ impl App {
             }
         }
         let size = (image_area.width, image_area.height);
-        let (sixel, font) = (self.sixel, self.font);
+        let (sixel, font, tick) = (self.sixel, self.font, self.tick);
         let Some(r) = self.reader.as_mut() else { return };
 
         let chapter = &r.chapters[r.chapter];
@@ -1136,15 +1437,12 @@ impl App {
         let page = r.images.get_mut(&r.page);
         let ready = page.as_ref().is_some_and(|p| !sixel || p.encoded.as_ref().is_some_and(|(s, _)| *s == size));
         if let Some(err) = &r.error {
-            f.render_widget(Paragraph::new(format!("error: {err}")).fg(Color::Red).wrap(Wrap { trim: true }), image_area);
+            f.render_widget(Paragraph::new(format!("✕ {err}")).fg(ERROR).wrap(Wrap { trim: true }).centered(), image_area);
         } else if let (true, Some(page)) = (ready, page) {
             if let Some((_, enc)) = page.encoded.as_ref().filter(|_| sixel) {
                 // La imagen la escribe flush_sixel() después del frame; acá solo la info
                 let kind = if enc.gray { "gris" } else { "color" };
-                info += &format!(
-                    "  [sixel {kind} {}×{}→{}×{} · celda {}×{}]",
-                    enc.src.0, enc.src.1, enc.out.0, enc.out.1, font.0, font.1
-                );
+                info += &format!("  · sixel {kind} {}×{} · celda {}×{}", enc.out.0, enc.out.1, font.0, font.1);
             } else if let Some(proto) = page.proto.as_mut() {
                 let resize = ratatui_image::Resize::Fit(Some(FilterType::Lanczos3));
                 // Centrar horizontalmente: la imagen se ajusta al alto y suele sobrar ancho
@@ -1152,14 +1450,51 @@ impl App {
                 let x = image_area.x + image_area.width.saturating_sub(fit.width) / 2;
                 let area = Rect::new(x, image_area.y, fit.width.min(image_area.width), image_area.height);
                 f.render_stateful_widget(StatefulImage::<StatefulProtocol>::default().resize(resize), area, proto);
-                info += &format!("  [{:?} {}×{}]", self.picker.protocol_type(), page.img.width(), page.img.height());
+                info += &format!("  · {:?}", self.picker.protocol_type());
             }
         } else {
-            let msg = if r.pages.is_empty() { "cargando páginas…" } else { "cargando imagen…" };
-            f.render_widget(Paragraph::new(msg).fg(Color::DarkGray), image_area);
+            let msg = if r.pages.is_empty() { " cargando páginas…" } else { " cargando imagen…" };
+            let [center] = Layout::vertical([Constraint::Length(1)]).flex(Flex::Center).areas(image_area);
+            f.render_widget(
+                Paragraph::new(Line::from(vec![Span::raw(theme::spinner(tick)).fg(PINK), Span::raw(msg).fg(MUTED)])).centered(),
+                center,
+            );
         }
-        status_line(f, status_area, &info, "←→ página · n/p capítulo · esc volver");
+        theme::status_bar(f, status_area, "LEYENDO", &info, &[("←→", "página"), ("n/p", "capítulo"), ("esc", "volver")]);
     }
+}
+
+/// Ficha del favorito seleccionado en la biblioteca.
+fn favorite_card(fav: &crate::library::Favorite) -> Paragraph<'_> {
+    let mut lines = vec![
+        Line::raw(""),
+        Line::from(fav.manga.title.clone()).fg(PINK).bold(),
+        Line::from(format!("{} · {}", fav.source_name, fav.lang)).fg(MUTED),
+        Line::raw(""),
+        Line::from(vec![
+            Span::raw(format!(" {} ", fav.status.label())).bg(theme::status_color(fav.status)).fg(ON_PINK).bold(),
+            Span::raw(format!("  {} capítulos leídos", fav.progress)).fg(TEXT),
+        ]),
+    ];
+    if let Some(last) = &fav.last_read {
+        lines.push(Line::raw(""));
+        lines.push(Line::from(vec![
+            Span::raw("▸ seguir en ").fg(MUTED),
+            Span::raw(last.chapter_name.clone()).fg(TEXT),
+            Span::raw(format!(" · pág. {}", last.page + 1)).fg(MUTED),
+        ]));
+    }
+    lines.push(Line::raw(""));
+    lines.push(match &fav.anilist {
+        None => Line::from("☁ sin vincular a AniList").fg(FAINT),
+        Some(link) if fav.needs_sync() => Line::from(format!("☁ {} · ↻ cambios sin sincronizar", link.title)).fg(PEACH),
+        Some(link) => Line::from(format!("☁ {} · ✓ sincronizado", link.title)).fg(MINT),
+    });
+    if let Some(desc) = fav.manga.description.as_ref().filter(|d| !d.is_empty()) {
+        lines.push(Line::raw(""));
+        lines.push(Line::from(desc.replace(['\n', '\r'], " ")).fg(MUTED));
+    }
+    Paragraph::new(lines).wrap(Wrap { trim: true }).block(theme::block("ficha").padding(ratatui::widgets::Padding::horizontal(1)))
 }
 
 // ───────────────────────────── helpers ─────────────────────────────
@@ -1191,21 +1526,6 @@ fn page_cache_path(source: &LoadedSource, chapter: &Chapter, index: usize) -> Pa
     dir.join(format!("{index:04}"))
 }
 
-fn block(title: &str) -> Block<'_> {
-    Block::bordered().border_type(BorderType::Rounded).title(title)
-}
-
-fn highlight(list: List<'_>) -> List<'_> {
-    list.highlight_style(Style::new().bg(Color::Rgb(40, 60, 90)).add_modifier(Modifier::BOLD))
-        .highlight_symbol("▶ ")
-}
-
-fn status_line(f: &mut Frame, area: Rect, left: &str, right: &str) {
-    let [l, r] = Layout::horizontal([Constraint::Min(1), Constraint::Length(right.chars().count() as u16 + 1)]).areas(area);
-    f.render_widget(Paragraph::new(left.to_string()).fg(Color::Gray), l);
-    f.render_widget(Paragraph::new(right.to_string()).fg(Color::DarkGray), r);
-}
-
 fn select_next(state: &mut ListState, len: usize) {
     if len > 0 {
         state.select(Some(state.selected().map_or(0, |i| (i + 1).min(len - 1))));
@@ -1220,5 +1540,77 @@ fn page_move(state: &mut ListState, len: usize, delta: isize) {
     if len > 0 {
         let i = state.selected().unwrap_or(0) as isize + delta;
         state.select(Some(i.clamp(0, len as isize - 1) as usize));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::library::Favorite;
+    use crate::model::SourceInfo;
+    use ratatui::backend::TestBackend;
+    use ratatui::Terminal;
+
+    fn fake_favorite(title: &str, status: Status, progress: i32, linked: bool, synced: bool) -> Favorite {
+        Favorite {
+            source_id: "1".into(),
+            source_name: "Manga TV".into(),
+            lang: "es".into(),
+            manga: Manga {
+                url: format!("/manga/{title}"),
+                title: title.into(),
+                description: Some("Iori Kitahara se muda a una ciudad costera para empezar la universidad y termina en un club de buceo muy particular.".into()),
+                ..Default::default()
+            },
+            added_at: 0,
+            status,
+            progress,
+            last_read: Some(LastRead { chapter_url: "/c/12".into(), chapter_name: "Capítulo 12".into(), page: 7 }),
+            anilist: linked.then(|| AniListLink {
+                media_id: 87395,
+                title: "Grand Blue".into(),
+                synced_progress: Some(if synced { progress } else { progress - 2 }),
+                synced_status: Some(status),
+                synced_at: None,
+            }),
+        }
+    }
+
+    /// Previsualiza biblioteca y manga como JSON (ver tools/preview.py). Uso:
+    /// MANGATERM_PREVIEW_DIR=<dir> cargo test --release screens_preview
+    #[test]
+    fn screens_preview() {
+        let Ok(dir) = std::env::var("MANGATERM_PREVIEW_DIR") else { return };
+        let mut app = App::new(Picker::halfblocks());
+        app.library.favorites = vec![
+            fake_favorite("Grand Blue", Status::Current, 12, true, false),
+            fake_favorite("Chainsaw Man", Status::Completed, 97, true, true),
+            fake_favorite("Frieren", Status::Planning, 0, false, false),
+            fake_favorite("Dandadan", Status::Paused, 54, true, true),
+        ];
+        app.library_state.select(Some(0));
+        app.anilist_user = Some("alexp".into());
+
+        let mut terminal = Terminal::new(TestBackend::new(120, 30)).unwrap();
+        app.screen = Screen::Library;
+        app.status = "★ agregado a favoritos".into();
+        terminal.draw(|f| app.draw(f)).unwrap();
+        theme::dump_buffer(terminal.backend().buffer(), &format!("{dir}/library.json"));
+
+        let fav = app.library.favorites[0].clone();
+        app.current = Some((LoadedSource { info: SourceInfo { id: "1".into(), name: "Manga TV".into(), lang: "es".into(), base_url: None, supports_latest: true } }, fav.manga.clone()));
+        let chapters = (1..=20)
+            .rev()
+            .map(|n| Chapter { url: format!("/c/{n}"), name: format!("Capítulo {n}"), chapter_number: n as f32, scanlator: Some("Plot Twist No Fansub".into()), ..Default::default() })
+            .collect();
+        let mut manga = fav.manga.clone();
+        manga.author = Some("Kenji Inoue, Kimitake Yoshioka".into());
+        manga.genre = Some("Comedia, Recuentos de la vida, Seinen".into());
+        app.details = Some(MangaDetails { manga, chapters });
+        app.chapters_state.select(Some(8));
+        app.screen = Screen::Manga;
+        app.status = "✓ AniList: Leyendo · capítulo 12".into();
+        terminal.draw(|f| app.draw(f)).unwrap();
+        theme::dump_buffer(terminal.backend().buffer(), &format!("{dir}/manga.json"));
     }
 }

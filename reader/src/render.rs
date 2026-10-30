@@ -18,7 +18,6 @@ pub struct Encoded {
     /// Tamaño final en celdas de terminal.
     pub cols: u16,
     pub rows: u16,
-    pub src: (u32, u32),
     pub out: (u32, u32),
     pub gray: bool,
 }
@@ -40,7 +39,6 @@ pub fn encode(img: &DynamicImage, cols: u16, rows: u16, font: (u16, u16)) -> Enc
         sixel,
         cols: w.div_ceil(fw) as u16,
         rows: h.div_ceil(fh) as u16,
-        src: (img.width(), img.height()),
         out: (w, h),
         gray,
     }

@@ -2,12 +2,14 @@ mod anilist;
 mod cache;
 mod catalog;
 mod ext;
+mod home;
 mod host;
 mod library;
 mod model;
 mod paths;
 mod render;
 mod search;
+mod theme;
 mod tui;
 
 use anyhow::{bail, Result};
