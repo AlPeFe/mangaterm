@@ -1,0 +1,50 @@
+name: Reportar un error
+description: Algo no funciona como debería
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Si el problema es una fuente puntual que **también falla en Mihon**, reportalo en
+        [keiyoushi/extensions](https://github.com/keiyoushi/extensions/issues).
+        No pegues tu token de AniList ni `anilist.json`.
+  - type: textarea
+    id: que-paso
+    attributes:
+      label: ¿Qué pasó?
+      description: Qué hiciste, qué esperabas y qué pasó en cambio.
+    validations:
+      required: true
+  - type: textarea
+    id: pasos
+    attributes:
+      label: Pasos para reproducirlo
+      placeholder: |
+        1. mangaterm search "..."
+        2. ...
+  - type: input
+    id: version
+    attributes:
+      label: Versión / commit
+      placeholder: "mangaterm --version, o el hash de git"
+  - type: dropdown
+    id: so
+    attributes:
+      label: Sistema operativo
+      options: [Linux, Windows, macOS, Otro]
+    validations:
+      required: true
+  - type: input
+    id: terminal
+    attributes:
+      label: Terminal
+      placeholder: "Windows Terminal 1.24, foot, kitty, WezTerm…"
+  - type: input
+    id: extension
+    attributes:
+      label: Extensión / fuente involucrada (si aplica)
+  - type: textarea
+    id: logs
+    attributes:
+      label: Salida o error
+      render: text
