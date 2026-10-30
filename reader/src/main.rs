@@ -1,5 +1,6 @@
 mod anilist;
 mod anilist_auth;
+mod backup;
 mod cache;
 mod catalog;
 mod ext;
@@ -8,6 +9,7 @@ mod host;
 mod library;
 mod model;
 mod paths;
+mod reads;
 mod render;
 mod search;
 mod theme;
@@ -41,6 +43,21 @@ enum Cmd {
     /// Cuenta de AniList
     #[command(subcommand)]
     Anilist(AnilistCmd),
+    /// Backups en formato de Mihon (.tachibk)
+    #[command(subcommand)]
+    Backup(BackupCmd),
+}
+
+#[derive(Subcommand)]
+enum BackupCmd {
+    /// Importa favoritos, capítulos leídos y vínculos con AniList; instala las extensiones que falten
+    Import { file: std::path::PathBuf },
+    /// Exporta la biblioteca a un .tachibk que Mihon puede restaurar
+    Export {
+        /// Archivo de salida (por defecto, hantho_<fecha>.tachibk en Descargas)
+        #[arg(long)]
+        out: Option<std::path::PathBuf>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -93,7 +110,42 @@ async fn main() -> Result<()> {
         Some(Cmd::Search { query, lang }) => cli_search(query, lang).await,
         Some(Cmd::Ext(cmd)) => ext_cmd(cmd).await,
         Some(Cmd::Anilist(cmd)) => anilist_cmd(cmd).await,
+        Some(Cmd::Backup(cmd)) => backup_cmd(cmd).await,
     }
+}
+
+async fn backup_cmd(cmd: BackupCmd) -> Result<()> {
+    let mut lib = library::Library::load();
+    let mut log = reads::ReadLog::load();
+    match cmd {
+        BackupCmd::Import { file } => {
+            let data = backup::read_file(&file)?;
+            let catalog = catalog::load().await?;
+            let installed: Vec<String> = ext::list().into_iter().map(|i| i.pkg).collect();
+            let s = backup::import(&data, &catalog, &installed, &mut lib, &mut log);
+            lib.save()?;
+            log.save()?;
+            println!("✓ {} favoritos nuevos · {} ya estaban", s.added, s.merged);
+            println!("✓ {} capítulos marcados como leídos · {} vinculados con AniList", s.chapters_read, s.anilist_links);
+            if !s.unknown_sources.is_empty() {
+                println!("! sin extensión en Keiyoushi: {}", s.unknown_sources.join(", "));
+            }
+            for e in &s.needed_extensions {
+                match ext::install(e).await {
+                    Ok(i) => println!("✓ extensión instalada: {}", i.name),
+                    Err(err) => eprintln!("✕ {}: {err}", e.name),
+                }
+            }
+        }
+        BackupCmd::Export { out } => {
+            let path = out.unwrap_or_else(backup::default_export_path);
+            let data = backup::export(&lib, &log);
+            backup::write_file(&data, &path)?;
+            let chapters: usize = data.manga.iter().map(|m| m.chapters.len()).sum();
+            println!("✓ {} favoritos y {chapters} capítulos leídos → {}", data.manga.len(), path.display());
+        }
+    }
+    Ok(())
 }
 
 async fn anilist_cmd(cmd: AnilistCmd) -> Result<()> {

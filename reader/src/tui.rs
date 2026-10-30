@@ -5,11 +5,14 @@
 
 use crate::anilist::{self, Credentials, Media, SyncResult};
 use crate::anilist_auth;
+use crate::backup::{self, Backup};
+use crate::catalog;
+use crate::reads::{self, ReadLog};
 use crate::ext::Installed;
 use crate::home::{Home, MenuItem};
 use crate::host::{Host, LoadedSource};
 use crate::library::{AniListLink, LastRead, Library, Status};
-use crate::theme::{self, ERROR, FAINT, LAVENDER, MINT, MUTED, ON_PINK, PEACH, PINK, TEXT};
+use crate::theme::{self, ERROR, FAINT, LAVENDER, MINT, MUTED, ON_PINK, PEACH, PINK, PINK_DIM, TEXT};
 use crate::model::{Chapter, Manga, MangaDetails, Page};
 use crate::paths;
 use crate::render::{self, Encoded};
@@ -53,6 +56,9 @@ enum Msg {
     /// (fuente, url del manga, resultado)
     AnilistSynced(String, String, Result<SyncResult>),
     AnilistLogin(Result<Credentials>),
+    BackupRead(Result<(Backup, Vec<catalog::Extension>)>),
+    /// Extensiones instaladas y cargadas tras importar un backup (y los errores, por nombre).
+    BackupExtensions(Vec<Installed>, Vec<LoadedSource>, Vec<String>),
 }
 
 /// Una página descargada. En modo Sixel se codifica con nuestro render (`render.rs`) para el
@@ -104,11 +110,23 @@ fn make_picker() -> Picker {
 }
 
 #[derive(PartialEq, Clone, Copy)]
+enum ChapterInputKind {
+    Filter,
+    Goto,
+}
+
+struct ChapterInput {
+    kind: ChapterInputKind,
+    text: String,
+}
+
+#[derive(PartialEq, Clone, Copy)]
 enum Screen {
     Home,
     Library,
     Extensions,
     AniList,
+    Backup,
     Search,
     Sources,
     Manga,
@@ -212,6 +230,19 @@ struct App {
     /// Client ID que se está escribiendo (configuración única, si el binario no trae uno).
     client_input: String,
 
+    reads: ReadLog,
+    /// Índices (en `details.chapters`) de los capítulos visibles: filtrados y en el orden elegido.
+    chapter_view: Vec<usize>,
+    chapter_filter: String,
+    chapters_reversed: bool,
+    /// Entrada de texto en la lista de capítulos: filtrar o ir a un número.
+    chapter_input: Option<ChapterInput>,
+
+    backup_files: Vec<std::path::PathBuf>,
+    backup_state: ListState,
+    backup_busy: bool,
+    backup_report: Vec<String>,
+
     home: Home,
     /// Tamaño de pantalla del último dibujo (para animar los pétalos).
     screen_area: Rect,
@@ -266,6 +297,15 @@ impl App {
             anilist_user: Credentials::load().map(|c| c.user_name),
             anilist_login: false,
             client_input: String::new(),
+            reads: ReadLog::load(),
+            chapter_view: Vec::new(),
+            chapter_filter: String::new(),
+            chapters_reversed: false,
+            chapter_input: None,
+            backup_files: Vec::new(),
+            backup_state: ListState::default(),
+            backup_busy: false,
+            backup_report: Vec::new(),
             home: Home::new(),
             screen_area: Rect::default(),
             tick: 0,
@@ -363,9 +403,15 @@ impl App {
                     // Si es un favorito, posicionarse en el último capítulo leído
                     let last = self.current_favorite().and_then(|f| f.last_read.clone());
                     let index = last.and_then(|l| d.chapters.iter().position(|c| c.url == l.chapter_url));
-                    self.chapters_state.select(index.or((!d.chapters.is_empty()).then_some(0)));
                     self.status = format!("{} capítulos", d.chapters.len());
                     self.details = Some(d);
+                    self.chapter_filter.clear();
+                    self.chapter_input = None;
+                    self.rebuild_chapter_view();
+                    match index {
+                        Some(i) => self.select_chapter(i),
+                        None => self.chapters_state.select((!self.chapter_view.is_empty()).then_some(0)),
+                    }
                 }
                 Err(e) => self.status = format!("error: {}", search::short_error(&e.to_string())),
             },
@@ -425,6 +471,18 @@ impl App {
             },
             Msg::AnilistMatches(_) => {}
             Msg::AnilistSynced(source_id, url, res) => self.on_synced(&source_id, &url, res),
+            Msg::BackupRead(res) => self.on_backup_read(res),
+            Msg::BackupExtensions(installed, sources, errors) => {
+                self.backup_busy = false;
+                let n = installed.len();
+                self.sources.extend(sources);
+                self.installed = crate::ext::list();
+                self.backup_report.push(format!("✓ {n} extensiones instaladas y cargadas"));
+                for e in errors {
+                    self.backup_report.push(format!("✕ {e}"));
+                }
+                self.status = "importación terminada ✿".into();
+            }
             Msg::AnilistLogin(res) => {
                 self.anilist_login = false;
                 match res {
@@ -455,6 +513,7 @@ impl App {
                 _ => {}
             },
             Screen::AniList => self.key_anilist(key),
+            Screen::Backup => self.key_backup(key),
             Screen::Library => self.key_library(key),
             Screen::Search => self.key_search(key),
             Screen::Sources => self.key_sources(key),
@@ -470,9 +529,10 @@ impl App {
         match self.screen {
             Screen::Home => true,
             Screen::Search => self.editing || self.pending > 0,
-            Screen::Manga => self.details.is_none(),
             Screen::AnilistPick => self.anilist_matches.is_none(),
             Screen::AniList => self.anilist_login || anilist_auth::client_id().is_none(),
+            Screen::Backup => self.backup_busy,
+            Screen::Manga => self.details.is_none() || self.chapter_input.is_some(),
             Screen::Reader => self.reader.as_ref().is_some_and(|r| {
                 r.error.is_none() && r.images.get(&r.page).is_none_or(|p| self.sixel && p.encoded.is_none())
             }),
@@ -522,7 +582,7 @@ impl App {
     }
 
     fn key_home(&mut self, key: KeyEvent) {
-        const ITEMS: usize = 5;
+        const ITEMS: usize = 6;
         let choice = match key.code {
             KeyCode::Char('q') | KeyCode::Esc => {
                 self.quit = true;
@@ -536,7 +596,7 @@ impl App {
                 self.home.selected = (self.home.selected + 1) % ITEMS;
                 return;
             }
-            KeyCode::Char(c @ '1'..='5') => c as usize - '1' as usize,
+            KeyCode::Char(c @ '1'..='6') => c as usize - '1' as usize,
             KeyCode::Enter => self.home.selected,
             KeyCode::Char('/') => 1,
             _ => return,
@@ -555,6 +615,11 @@ impl App {
             3 => {
                 self.anilist_user = Credentials::load().map(|c| c.user_name);
                 self.screen = Screen::AniList;
+            }
+            4 => {
+                self.backup_files = backup::find_backups();
+                self.backup_state.select(Some(0));
+                self.screen = Screen::Backup;
             }
             _ => self.quit = true,
         }
@@ -681,8 +746,30 @@ impl App {
     }
 
     fn key_manga(&mut self, key: KeyEvent) {
-        let len = self.details.as_ref().map_or(0, |d| d.chapters.len());
+        if self.chapter_input.is_some() {
+            self.key_chapter_input(key);
+            return;
+        }
+        let len = self.chapter_view.len();
         match key.code {
+            KeyCode::Char('/') if self.details.is_some() => {
+                self.chapter_input = Some(ChapterInput { kind: ChapterInputKind::Filter, text: self.chapter_filter.clone() })
+            }
+            KeyCode::Char('#') | KeyCode::Char(':') if self.details.is_some() => {
+                self.chapter_input = Some(ChapterInput { kind: ChapterInputKind::Goto, text: String::new() })
+            }
+            KeyCode::Char('o') => {
+                let selected = self.selected_chapter();
+                self.chapters_reversed = !self.chapters_reversed;
+                self.rebuild_chapter_view();
+                if let Some(i) = selected {
+                    self.select_chapter(i);
+                }
+            }
+            KeyCode::Char('m') => self.toggle_selected_read(),
+            KeyCode::Char('M') => self.mark_read_up_to_selected(),
+            KeyCode::Char('[') => page_move(&mut self.chapters_state, len, -100),
+            KeyCode::Char(']') => page_move(&mut self.chapters_state, len, 100),
             KeyCode::Esc | KeyCode::Char('q') | KeyCode::Backspace => {
                 self.generation += 1;
                 self.screen = self.manga_back;
@@ -726,10 +813,79 @@ impl App {
             KeyCode::Home | KeyCode::Char('g') => self.chapters_state.select((len > 0).then_some(0)),
             KeyCode::End | KeyCode::Char('G') => self.chapters_state.select(len.checked_sub(1)),
             KeyCode::Enter => {
-                if let Some(i) = self.chapters_state.selected() {
+                if let Some(i) = self.selected_chapter() {
                     self.open_chapter(i);
                 }
             }
+            _ => {}
+        }
+    }
+
+    /// Escribiendo un filtro (`/`, en vivo) o un número de capítulo (`#`).
+    fn key_chapter_input(&mut self, key: KeyEvent) {
+        let Some(input) = self.chapter_input.as_mut() else { return };
+        match key.code {
+            KeyCode::Char(c) => input.text.push(c),
+            KeyCode::Backspace => {
+                input.text.pop();
+            }
+            KeyCode::Esc => {
+                if input.kind == ChapterInputKind::Filter {
+                    self.chapter_filter.clear();
+                    self.rebuild_chapter_view();
+                }
+                self.chapter_input = None;
+                return;
+            }
+            KeyCode::Enter => {
+                let input = self.chapter_input.take().unwrap();
+                if input.kind == ChapterInputKind::Goto {
+                    self.goto_chapter_number(&input.text);
+                }
+                return;
+            }
+            _ => return,
+        }
+        if input.kind == ChapterInputKind::Filter {
+            self.chapter_filter = input.text.clone();
+            let selected = self.selected_chapter();
+            self.rebuild_chapter_view();
+            match selected.filter(|i| self.chapter_view.contains(i)) {
+                Some(i) => self.select_chapter(i),
+                None => self.chapters_state.select((!self.chapter_view.is_empty()).then_some(0)),
+            }
+        }
+    }
+
+    fn key_backup(&mut self, key: KeyEvent) {
+        if self.backup_busy {
+            return;
+        }
+        let len = self.backup_files.len() + 1;
+        match key.code {
+            KeyCode::Esc | KeyCode::Char('q') | KeyCode::Backspace => self.screen = Screen::Home,
+            KeyCode::Up | KeyCode::Char('k') => select_prev(&mut self.backup_state),
+            KeyCode::Down | KeyCode::Char('j') => select_next(&mut self.backup_state, len),
+            KeyCode::Char('r') => self.backup_files = backup::find_backups(),
+            KeyCode::Enter => match self.backup_state.selected() {
+                Some(0) => self.export_backup(),
+                Some(i) => {
+                    if let Some(path) = self.backup_files.get(i - 1).cloned() {
+                        self.backup_busy = true;
+                        self.backup_report = vec![format!("leyendo {}…", path.display())];
+                        let tx = self.tx.clone();
+                        tokio::spawn(async move {
+                            let res = async {
+                                let backup = tokio::task::spawn_blocking(move || backup::read_file(&path)).await??;
+                                Ok((backup, catalog::load().await?))
+                            }
+                            .await;
+                            let _ = tx.send(Msg::BackupRead(res));
+                        });
+                    }
+                }
+                None => {}
+            },
             _ => {}
         }
     }
@@ -739,7 +895,8 @@ impl App {
         match key.code {
             KeyCode::Esc | KeyCode::Char('q') | KeyCode::Backspace => {
                 // Al volver, dejar seleccionado el capítulo que se estaba leyendo
-                self.chapters_state.select(Some(r.chapter));
+                let chapter = r.chapter;
+                self.select_chapter(chapter);
                 self.reader = None;
                 self.save_library();
                 self.generation += 1;
@@ -966,6 +1123,9 @@ impl App {
         let chapter = r.chapters[r.chapter].clone();
         let (page, last_page) = (r.page, !r.pages.is_empty() && r.page + 1 >= r.pages.len());
         let (source_id, url) = (r.source.info.id.clone(), r.manga_url.clone());
+        if last_page && self.reads.mark(&reads::key(&source_id, &url), &chapter) {
+            self.save_reads();
+        }
         let Some(fav) = self.library.get_mut(&source_id, &url) else { return };
         fav.last_read = Some(LastRead { chapter_url: chapter.url.clone(), chapter_name: chapter.name.clone(), page });
         if last_page {
@@ -973,8 +1133,191 @@ impl App {
             fav.mark_chapter_read(&chapter);
             if fav.progress != before {
                 self.save_library();
+                self.auto_sync(&source_id, &url);
             }
         }
+    }
+
+    fn save_reads(&mut self) {
+        if let Err(e) = self.reads.save() {
+            self.status = format!("no se pudo guardar el registro de leídos: {e}");
+        }
+    }
+
+    /// Envía el progreso a AniList sin preguntar, si el favorito está vinculado y hay sesión.
+    fn auto_sync(&mut self, source_id: &str, url: &str) {
+        let (Some(creds), Some(fav)) = (Credentials::load(), self.library.favorites.iter().find(|f| f.is(source_id, url))) else {
+            return;
+        };
+        let Some(link) = fav.anilist.clone().filter(|_| fav.needs_sync()) else { return };
+        let (status, progress) = (fav.status.as_anilist(), fav.progress);
+        let (tx, source_id, url) = (self.tx.clone(), source_id.to_string(), url.to_string());
+        tokio::spawn(async move {
+            let res = anilist::sync(&creds, link.media_id, status, progress).await;
+            let _ = tx.send(Msg::AnilistSynced(source_id, url, res));
+        });
+    }
+
+    // ───────────────────────────── lista de capítulos ─────────────────────────────
+
+    fn current_key(&self) -> Option<String> {
+        self.current.as_ref().map(|(src, m)| reads::key(&src.info.id, &m.url))
+    }
+
+    fn rebuild_chapter_view(&mut self) {
+        let Some(d) = &self.details else {
+            self.chapter_view.clear();
+            return;
+        };
+        let filter = self.chapter_filter.trim().to_lowercase();
+        let mut view: Vec<usize> = (0..d.chapters.len())
+            .filter(|&i| {
+                let c = &d.chapters[i];
+                filter.is_empty() || c.name.to_lowercase().contains(&filter) || format_number(c.chapter_number) == filter
+            })
+            .collect();
+        if self.chapters_reversed {
+            view.reverse();
+        }
+        self.chapter_view = view;
+    }
+
+    fn selected_chapter(&self) -> Option<usize> {
+        self.chapters_state.selected().and_then(|v| self.chapter_view.get(v).copied())
+    }
+
+    fn select_chapter(&mut self, index: usize) {
+        if let Some(pos) = self.chapter_view.iter().position(|&i| i == index) {
+            self.chapters_state.select(Some(pos));
+        }
+    }
+
+    /// Salta al capítulo con ese número (o el más cercano), quitando el filtro si hace falta.
+    fn goto_chapter_number(&mut self, text: &str) {
+        let Ok(target) = text.trim().replace(',', ".").parse::<f32>() else {
+            self.status = format!("«{text}» no es un número de capítulo");
+            return;
+        };
+        let Some(d) = &self.details else { return };
+        let best = d
+            .chapters
+            .iter()
+            .enumerate()
+            .filter(|(_, c)| c.chapter_number >= 0.0)
+            .min_by(|(_, a), (_, b)| (a.chapter_number - target).abs().total_cmp(&(b.chapter_number - target).abs()))
+            .map(|(i, c)| (i, c.name.clone()));
+        match best {
+            Some((i, name)) => {
+                if !self.chapter_view.contains(&i) {
+                    self.chapter_filter.clear();
+                    self.rebuild_chapter_view();
+                }
+                self.select_chapter(i);
+                self.status = format!("→ {name}");
+            }
+            None => self.status = "los capítulos de esta fuente no tienen número".into(),
+        }
+    }
+
+    /// `m`: marca o desmarca el capítulo seleccionado.
+    fn toggle_selected_read(&mut self) {
+        let (Some(i), Some(key)) = (self.selected_chapter(), self.current_key()) else { return };
+        let Some(chapter) = self.details.as_ref().map(|d| d.chapters[i].clone()) else { return };
+        if self.reads.is_read(&key, &chapter.url) {
+            self.reads.unmark(&key, &chapter.url);
+            self.status = format!("○ {} sin leer", chapter.name);
+        } else {
+            self.reads.mark(&key, &chapter);
+            self.status = format!("✓ {} leído", chapter.name);
+        }
+        self.save_reads();
+        self.after_manual_marks(&key);
+    }
+
+    /// `M`: marca como leídos el seleccionado y todos los anteriores.
+    fn mark_read_up_to_selected(&mut self) {
+        let (Some(i), Some(key)) = (self.selected_chapter(), self.current_key()) else { return };
+        let Some(d) = self.details.as_ref() else { return };
+        let first = d.chapters.first().map_or(0.0, |c| c.chapter_number);
+        let last = d.chapters.last().map_or(0.0, |c| c.chapter_number);
+        // Las fuentes suelen listar del más nuevo al más viejo: los anteriores están "abajo"
+        let older: Vec<usize> = if first >= last { (i..d.chapters.len()).collect() } else { (0..=i).collect() };
+        let chapters: Vec<_> = older.iter().map(|&j| d.chapters[j].clone()).collect();
+        let marked = chapters.iter().filter(|c| self.reads.mark(&key, c)).count();
+        self.status = format!("✓ {marked} capítulos marcados como leídos");
+        self.save_reads();
+        self.after_manual_marks(&key);
+    }
+
+    /// Tras marcar a mano: actualizar el progreso del favorito y AniList.
+    fn after_manual_marks(&mut self, key: &str) {
+        let Some((src, manga)) = self.current.clone() else { return };
+        let max = self.reads.max_number(key);
+        let Some(fav) = self.library.get_mut(&src.info.id, &manga.url) else { return };
+        if fav.progress != max {
+            fav.progress = max;
+            self.save_library();
+            self.auto_sync(&src.info.id, &manga.url);
+        }
+    }
+
+    // ───────────────────────────── backups ─────────────────────────────
+
+    fn export_backup(&mut self) {
+        let path = backup::default_export_path();
+        let data = backup::export(&self.library, &self.reads);
+        let chapters: usize = data.manga.iter().map(|m| m.chapters.len()).sum();
+        self.backup_report = match backup::write_file(&data, &path) {
+            Ok(()) => vec![
+                format!("✓ exportados {} favoritos y {chapters} capítulos leídos", data.manga.len()),
+                format!("  {}", path.display()),
+                "  en Mihon: Más → Copia de seguridad → Restaurar".into(),
+            ],
+            Err(e) => vec![format!("✕ {e}")],
+        };
+    }
+
+    fn on_backup_read(&mut self, res: Result<(Backup, Vec<catalog::Extension>)>) {
+        let (data, catalog) = match res {
+            Ok(v) => v,
+            Err(e) => {
+                self.backup_busy = false;
+                self.backup_report = vec![format!("✕ {e}")];
+                return;
+            }
+        };
+        let installed: Vec<String> = self.installed.iter().map(|i| i.pkg.clone()).collect();
+        let s = backup::import(&data, &catalog, &installed, &mut self.library, &mut self.reads);
+        self.save_library();
+        self.save_reads();
+        self.backup_report = vec![
+            format!("✓ {} favoritos nuevos · {} ya estaban", s.added, s.merged),
+            format!("✓ {} capítulos marcados como leídos", s.chapters_read),
+            format!("✓ {} vinculados con AniList", s.anilist_links),
+        ];
+        if !s.unknown_sources.is_empty() {
+            self.backup_report.push(format!("! sin extensión en Keiyoushi: {}", s.unknown_sources.join(", ")));
+        }
+        let (Some(host), false) = (self.host.clone(), s.needed_extensions.is_empty()) else {
+            self.backup_busy = false;
+            self.status = "importación terminada ✿".into();
+            return;
+        };
+        let names: Vec<_> = s.needed_extensions.iter().map(|e| e.name.clone()).collect();
+        self.backup_report.push(format!("instalando {} extensiones: {}…", names.len(), names.join(", ")));
+        let tx = self.tx.clone();
+        tokio::spawn(async move {
+            let (mut ok, mut errors) = (Vec::new(), Vec::new());
+            for ext in &s.needed_extensions {
+                match crate::ext::install(ext).await {
+                    Ok(i) => ok.push(i),
+                    Err(e) => errors.push(format!("{}: {e}", ext.name)),
+                }
+            }
+            let (sources, load_errors) = host.load_all(&ok).await;
+            errors.extend(load_errors.into_iter().map(|(n, e)| format!("{n}: {}", search::short_error(&e))));
+            let _ = tx.send(Msg::BackupExtensions(ok, sources, errors));
+        });
     }
 
     fn open_chapter(&mut self, index: usize) {
@@ -1106,6 +1449,7 @@ impl App {
             Screen::Reader => self.draw_reader(f),
             Screen::AnilistPick => self.draw_anilist_pick(f),
             Screen::Extensions => self.draw_extensions(f),
+            Screen::Backup => self.draw_backup(f),
             Screen::AniList => self.draw_anilist(f),
         }
     }
@@ -1124,6 +1468,7 @@ impl App {
             MenuItem { icon: "⌕", label: "Buscar", detail: sources },
             MenuItem { icon: "✦", label: "Extensiones", detail: format!("{} instaladas", self.installed.len()) },
             MenuItem { icon: "☁", label: "AniList", detail: anilist },
+            MenuItem { icon: "⇄", label: "Backup Mihon", detail: "importar / exportar".into() },
             MenuItem { icon: "✕", label: "Salir", detail: String::new() },
         ]
     }
@@ -1310,6 +1655,53 @@ impl App {
         theme::status_bar(f, status_area, "ANILIST", &self.status, keys);
     }
 
+    fn draw_backup(&mut self, f: &mut Frame) {
+        let [main, status_area] = Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(f.area());
+        let [list_area, report_area] = Layout::vertical([Constraint::Min(6), Constraint::Length(8)]).areas(main);
+        let mut items = vec![ListItem::new(Line::from(vec![
+            Span::raw("⇪ ").fg(MINT),
+            Span::raw("Exportar biblioteca").fg(TEXT).bold(),
+            Span::raw(format!("  {} favoritos → Descargas (.tachibk)", self.library.favorites.len())).fg(MUTED),
+        ]))];
+        for path in &self.backup_files {
+            let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+            let dir = path.parent().map(|d| d.display().to_string()).unwrap_or_default();
+            items.push(ListItem::new(Line::from(vec![
+                Span::raw("⇩ ").fg(LAVENDER),
+                Span::raw("Importar ").fg(MUTED),
+                Span::raw(name).fg(TEXT).bold(),
+                Span::raw(format!("  {dir}")).fg(FAINT),
+            ])));
+        }
+        f.render_stateful_widget(
+            theme::highlight(List::new(items).block(theme::block_focused("⇄ backup de Mihon"))),
+            list_area,
+            &mut self.backup_state,
+        );
+
+        let mut lines: Vec<Line> = if self.backup_report.is_empty() {
+            let hint = if self.backup_files.is_empty() {
+                "no encontré backups: en Mihon, Más → Copia de seguridad → Crear, y dejá el .tachibk en Descargas o Documentos (r para buscar de nuevo)"
+            } else {
+                "importar agrega favoritos, capítulos leídos y vínculos con AniList; instala solas las extensiones que falten"
+            };
+            vec![Line::from(hint).fg(MUTED)]
+        } else {
+            self.backup_report
+                .iter()
+                .map(|l| {
+                    let color = if l.starts_with('✕') { ERROR } else if l.starts_with('!') { PEACH } else if l.starts_with('✓') { MINT } else { MUTED };
+                    Line::from(l.clone()).fg(color)
+                })
+                .collect()
+        };
+        if self.backup_busy {
+            lines.push(Line::from(vec![Span::raw(theme::spinner(self.tick)).fg(PINK), Span::raw(" trabajando…").fg(MUTED)]));
+        }
+        f.render_widget(Paragraph::new(lines).wrap(Wrap { trim: true }).block(theme::block("resultado")), report_area);
+        theme::status_bar(f, status_area, "BACKUP", &self.status, &[("enter", "elegir"), ("r", "buscar archivos"), ("esc", "menú")]);
+    }
+
     fn draw_anilist_pick(&mut self, f: &mut Frame) {
         let [list_area, status_area] = Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(f.area());
         let manga = self.current.as_ref().map(|(_, m)| m.title.clone()).unwrap_or_default();
@@ -1467,6 +1859,7 @@ impl App {
         f.render_widget(Paragraph::new(lines).wrap(Wrap { trim: true }).block(theme::block("manga")), info_area);
 
         let last_read = self.current_favorite().and_then(|f| f.last_read.as_ref()).map(|l| l.chapter_url.clone());
+        let read_key = self.current_key().unwrap_or_default();
         match &self.details {
             None => f.render_widget(
                 Paragraph::new(Line::from(vec![
@@ -1477,23 +1870,43 @@ impl App {
                 list_area,
             ),
             Some(d) => {
-                let items: Vec<ListItem> = d
-                    .chapters
+                let items: Vec<ListItem> = self
+                    .chapter_view
                     .iter()
-                    .map(|c| {
+                    .map(|&i| {
+                        let c = &d.chapters[i];
+                        let read = self.reads.is_read(&read_key, &c.url);
                         let marker = if last_read.as_deref() == Some(c.url.as_str()) {
                             Span::raw("▸ ").fg(PINK)
+                        } else if read {
+                            Span::raw("✓ ").fg(PINK_DIM)
                         } else {
                             Span::raw("  ")
                         };
-                        let mut spans = vec![marker, Span::raw(c.name.clone()).fg(TEXT)];
+                        // Los leídos se apagan; los pendientes quedan en primer plano
+                        let mut spans = vec![marker, Span::raw(c.name.clone()).fg(if read { FAINT } else { TEXT })];
                         if let Some(s) = c.scanlator.as_ref().filter(|s| !s.is_empty()) {
                             spans.push(Span::raw(format!("  {s}")).fg(FAINT));
                         }
                         ListItem::new(Line::from(spans))
                     })
                     .collect();
-                let title = format!("capítulos · {}", d.chapters.len());
+                let read_count = d.chapters.iter().filter(|c| self.reads.is_read(&read_key, &c.url)).count();
+                let mut title = format!("capítulos · {} · {read_count} leídos", d.chapters.len());
+                if self.chapters_reversed {
+                    title += " · ↑ viejos primero";
+                }
+                match &self.chapter_input {
+                    Some(input) => {
+                        let label = if input.kind == ChapterInputKind::Filter { "filtrar" } else { "ir al capítulo" };
+                        let cursor = if self.tick % 16 < 9 { "▏" } else { " " };
+                        title = format!("{label}: {}{cursor}", input.text);
+                    }
+                    None if !self.chapter_filter.is_empty() => {
+                        title += &format!(" · filtro «{}» ({})", self.chapter_filter, self.chapter_view.len());
+                    }
+                    None => {}
+                }
                 f.render_stateful_widget(
                     theme::highlight(List::new(items).block(theme::block_focused(&title))),
                     list_area,
@@ -1506,7 +1919,11 @@ impl App {
             status_area,
             "MANGA",
             &self.status,
-            &[("enter", "leer"), ("c", "continuar"), ("f", "fav"), ("e", "estado"), ("a", "anilist"), ("esc", "volver")],
+            &if self.chapter_input.is_some() {
+                vec![("enter", "aceptar"), ("esc", "cancelar")]
+            } else {
+                vec![("enter", "leer"), ("m/M", "leído"), ("/", "filtrar"), ("#", "ir a"), ("o", "orden"), ("c", "seguir"), ("f", "fav"), ("a", "anilist")]
+            },
         );
     }
 
@@ -1620,6 +2037,11 @@ fn page_cache_path(source: &LoadedSource, chapter: &Chapter, index: usize) -> Pa
     dir.join(format!("{index:04}"))
 }
 
+/// "12" para 12.0, "12.5" para 12.5 (para comparar con lo que escribe el usuario).
+fn format_number(n: f32) -> String {
+    if n.fract() == 0.0 { format!("{n:.0}") } else { n.to_string() }
+}
+
 fn select_next(state: &mut ListState, len: usize) {
     if len > 0 {
         state.select(Some(state.selected().map_or(0, |i| (i + 1).min(len - 1))));
@@ -1693,18 +2115,40 @@ mod tests {
 
         let fav = app.library.favorites[0].clone();
         app.current = Some((LoadedSource { info: SourceInfo { id: "1".into(), name: "Manga TV".into(), lang: "es".into(), base_url: None, supports_latest: true } }, fav.manga.clone()));
-        let chapters = (1..=20)
+        let chapters: Vec<Chapter> = (1..=20)
             .rev()
             .map(|n| Chapter { url: format!("/c/{n}"), name: format!("Capítulo {n}"), chapter_number: n as f32, scanlator: Some("Plot Twist No Fansub".into()), ..Default::default() })
             .collect();
         let mut manga = fav.manga.clone();
         manga.author = Some("Kenji Inoue, Kimitake Yoshioka".into());
         manga.genre = Some("Comedia, Recuentos de la vida, Seinen".into());
+        let key = reads::key("1", &fav.manga.url);
+        for c in chapters.iter().filter(|c| c.chapter_number <= 12.0) {
+            app.reads.mark(&key, c);
+        }
         app.details = Some(MangaDetails { manga, chapters });
-        app.chapters_state.select(Some(8));
+        app.rebuild_chapter_view();
+        app.chapters_state.select(Some(7));
         app.screen = Screen::Manga;
         app.status = "✓ AniList: Leyendo · capítulo 12".into();
         terminal.draw(|f| app.draw(f)).unwrap();
         theme::dump_buffer(terminal.backend().buffer(), &format!("{dir}/manga.json"));
+
+        app.backup_files = vec![
+            std::path::PathBuf::from(r"C:\Users\alexp\Downloads\app.mihon_2026-10-29_21-04.tachibk"),
+            std::path::PathBuf::from(r"C:\Users\alexp\Documents\tachiyomi_2025-03-02_10-11.tachibk"),
+        ];
+        app.backup_state.select(Some(1));
+        app.backup_report = vec![
+            "✓ 48 favoritos nuevos · 2 ya estaban".into(),
+            "✓ 3120 capítulos marcados como leídos".into(),
+            "✓ 31 vinculados con AniList".into(),
+            "! sin extensión en Keiyoushi: Fuente Rara".into(),
+            "✓ 6 extensiones instaladas y cargadas".into(),
+        ];
+        app.screen = Screen::Backup;
+        app.status = "importación terminada ✿".into();
+        terminal.draw(|f| app.draw(f)).unwrap();
+        theme::dump_buffer(terminal.backend().buffer(), &format!("{dir}/backup.json"));
     }
 }

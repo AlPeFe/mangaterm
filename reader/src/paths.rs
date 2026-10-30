@@ -48,6 +48,10 @@ pub fn library_file() -> PathBuf {
     home().join("library.json")
 }
 
+pub fn read_file() -> PathBuf {
+    home().join("read.json")
+}
+
 /// Credenciales de AniList (token OAuth). Es un secreto: no compartir este archivo.
 pub fn anilist_file() -> PathBuf {
     home().join("anilist.json")
