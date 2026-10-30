@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-labelledby="t">
+  <title id="t">Logo: flor de sakura en una ventana de terminal</title>
+  <defs>
+    <linearGradient id="petal" x1="0" y1="0" x2="0" y2="-44" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#C8B2FF"/>
+      <stop offset="0.55" stop-color="#FFB6D5"/>
+      <stop offset="1" stop-color="#FFD3E6"/>
+    </linearGradient>
+    <!-- Pétalo de sakura con la muesca en la punta; el centro de la flor es (0,0) -->
+    <path id="p" d="M0 -4 C-15 -12 -21 -30 -11 -42 L0 -35 L11 -42 C21 -30 15 -12 0 -4 Z"/>
+  </defs>
+
+  <!-- Ventana: fondo ciruela con borde lavanda, se ve igual en tema claro y oscuro -->
+  <rect x="4" y="4" width="120" height="120" rx="26" fill="#241A22"/>
+  <rect x="4.75" y="4.75" width="118.5" height="118.5" rx="25.25" fill="none" stroke="#C8B2FF" stroke-opacity=".35" stroke-width="1.5"/>
+
+  <!-- Barra de título con los tres puntitos de la paleta -->
+  <circle cx="24" cy="22" r="4.5" fill="#FFB6D5"/>
+  <circle cx="38" cy="22" r="4.5" fill="#C8B2FF"/>
+  <circle cx="52" cy="22" r="4.5" fill="#A0ECC8"/>
+
+  <!-- Flor -->
+  <g transform="translate(64 70) scale(.92)" fill="url(#petal)" stroke="#241A22" stroke-width="2.2" stroke-linejoin="round">
+    <use href="#p"/>
+    <use href="#p" transform="rotate(72)"/>
+    <use href="#p" transform="rotate(144)"/>
+    <use href="#p" transform="rotate(216)"/>
+    <use href="#p" transform="rotate(288)"/>
+    <g stroke="#FFCCAA" stroke-width="1.8" stroke-linecap="round" fill="#FFCCAA">
+      <path d="M0 0 L7 -9.7 M0 0 L11.4 3.7 M0 0 L0 12 M0 0 L-11.4 3.7 M0 0 L-7 -9.7"/>
+      <circle cx="7" cy="-9.7" r="1.6" stroke="none"/><circle cx="11.4" cy="3.7" r="1.6" stroke="none"/><circle cx="0" cy="12" r="1.6" stroke="none"/><circle cx="-11.4" cy="3.7" r="1.6" stroke="none"/><circle cx="-7" cy="-9.7" r="1.6" stroke="none"/>
+    </g>
+    <circle r="5" fill="#FFCCAA" stroke="none"/>
+  </g>
+
+  <!-- Cursor de terminal -->
+  <rect x="96" y="100" width="10" height="4" rx="1.5" fill="#A0ECC8"/>
+</svg>
