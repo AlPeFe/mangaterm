@@ -12,6 +12,7 @@ import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
@@ -50,7 +51,8 @@ fun main() {
     System.setOut(System.err)
     HostEnv.init()
 
-    val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO + CoroutineExceptionHandler { _, e -> e.printStackTrace() })
+    val requests = SupervisorJob()
+    val scope = CoroutineScope(requests + Dispatchers.IO + CoroutineExceptionHandler { _, e -> e.printStackTrace() })
     val input = System.`in`.bufferedReader(Charsets.UTF_8)
     runBlocking {
         while (true) {
@@ -58,8 +60,10 @@ fun main() {
             if (line.isBlank()) continue
             scope.launch { handle(line) }
         }
+        // stdin cerrado: terminar de responder lo que ya estaba en curso antes de salir
+        requests.children.toList().joinAll()
     }
-    // stdin cerrado: el cliente se fue. Los hilos de OkHttp no son daemon, así que salimos explícitamente.
+    // Los hilos de OkHttp no son daemon, así que salimos explícitamente
     exitProcess(0)
 }
 

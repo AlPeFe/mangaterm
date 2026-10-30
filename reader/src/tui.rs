@@ -1,9 +1,11 @@
-//! Interfaz de terminal: buscar → elegir fuente → capítulos → leer.
+//! Interfaz de terminal: biblioteca / buscar → elegir fuente → capítulos → leer.
 //!
-//! Todo lo lento (host, búsquedas, descargas, decodificación) corre en tareas aparte y
+//! Todo lo lento (host, búsquedas, descargas, decodificación, AniList) corre en tareas aparte y
 //! vuelve como `Msg` al bucle principal, que es el único que toca el estado y dibuja.
 
+use crate::anilist::{self, Credentials, Media, SyncResult};
 use crate::host::{Host, LoadedSource};
+use crate::library::{AniListLink, LastRead, Library, Status};
 use crate::model::{Chapter, Manga, MangaDetails, Page};
 use crate::paths;
 use crate::render::{self, Encoded};
@@ -41,6 +43,9 @@ enum Msg {
     Pages(u64, Result<Vec<Page>>),
     Image(u64, usize, Result<DynamicImage>),
     Encoded(u64, usize, (u16, u16), Encoded),
+    AnilistMatches(Result<Vec<Media>>),
+    /// (fuente, url del manga, resultado)
+    AnilistSynced(String, String, Result<SyncResult>),
 }
 
 /// Una página descargada. En modo Sixel se codifica con nuestro render (`render.rs`) para el
@@ -91,12 +96,14 @@ fn make_picker() -> Picker {
     picker
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Clone, Copy)]
 enum Screen {
+    Library,
     Search,
     Sources,
     Manga,
     Reader,
+    AnilistPick,
 }
 
 /// El mismo manga encontrado en varias fuentes.
@@ -109,6 +116,8 @@ struct Group {
 struct Reader {
     source: LoadedSource,
     manga: Manga,
+    /// URL del manga tal como está en la biblioteca (clave del favorito).
+    manga_url: String,
     chapters: Vec<Chapter>,
     chapter: usize,
     pages: Vec<Page>,
@@ -178,14 +187,23 @@ struct App {
     current: Option<(LoadedSource, Manga)>,
     details: Option<MangaDetails>,
     chapters_state: ListState,
+    /// A dónde vuelve "esc" desde la pantalla del manga.
+    manga_back: Screen,
 
     reader: Option<Reader>,
+
+    library: Library,
+    library_state: ListState,
+    anilist_matches: Option<Vec<Media>>,
+    anilist_state: ListState,
 }
 
 impl App {
     fn new(picker: Picker) -> Self {
         let (tx, rx) = mpsc::unbounded_channel();
         let font = picker.font_size();
+        let library = Library::load();
+        let has_favorites = !library.favorites.is_empty();
         App {
             sixel: picker.protocol_type() == ProtocolType::Sixel,
             font: (font.width, font.height),
@@ -196,14 +214,15 @@ impl App {
             rx,
             host: None,
             sources: Vec::new(),
-            screen: Screen::Search,
+            // Con favoritos se arranca en la biblioteca; si no, directo a buscar
+            screen: if has_favorites { Screen::Library } else { Screen::Search },
             status: "cargando extensiones…".into(),
             quit: false,
             clear: false,
             generation: 0,
             search_gen: 0,
             input: String::new(),
-            editing: true,
+            editing: !has_favorites,
             query: String::new(),
             groups: Vec::new(),
             groups_state: ListState::default(),
@@ -214,7 +233,12 @@ impl App {
             current: None,
             details: None,
             chapters_state: ListState::default(),
+            manga_back: Screen::Search,
             reader: None,
+            library_state: ListState::default().with_selected(has_favorites.then_some(0)),
+            library,
+            anilist_matches: None,
+            anilist_state: ListState::default(),
         }
     }
 
@@ -274,7 +298,10 @@ impl App {
             }
             Msg::Details(generation, res) if generation == self.generation => match res {
                 Ok(d) => {
-                    self.chapters_state.select((!d.chapters.is_empty()).then_some(0));
+                    // Si es un favorito, posicionarse en el último capítulo leído
+                    let last = self.current_favorite().and_then(|f| f.last_read.clone());
+                    let index = last.and_then(|l| d.chapters.iter().position(|c| c.url == l.chapter_url));
+                    self.chapters_state.select(index.or((!d.chapters.is_empty()).then_some(0)));
                     self.status = format!("{} capítulos", d.chapters.len());
                     self.details = Some(d);
                 }
@@ -285,7 +312,10 @@ impl App {
                 match res {
                     Ok(pages) if pages.is_empty() => r.error = Some("el capítulo no tiene páginas".into()),
                     Ok(pages) => {
+                        // "Continuar" pudo fijar una página antes de saber cuántas hay
+                        r.page = r.page.min(pages.len() - 1);
                         r.pages = pages;
+                        self.track_progress();
                         self.prefetch();
                     }
                     Err(e) => r.error = Some(search::short_error(&e.to_string())),
@@ -317,6 +347,22 @@ impl App {
                 page.encoded = Some((size, enc));
             }
             Msg::Details(..) | Msg::Pages(..) | Msg::Image(..) | Msg::Encoded(..) => {}
+            Msg::AnilistMatches(res) if self.screen == Screen::AnilistPick => match res {
+                Ok(list) if list.is_empty() => {
+                    self.status = "AniList no encontró ese título".into();
+                    self.screen = Screen::Manga;
+                }
+                Ok(list) => {
+                    self.anilist_state.select(Some(0));
+                    self.anilist_matches = Some(list);
+                }
+                Err(e) => {
+                    self.status = format!("AniList: {e}");
+                    self.screen = Screen::Manga;
+                }
+            },
+            Msg::AnilistMatches(_) => {}
+            Msg::AnilistSynced(source_id, url, res) => self.on_synced(&source_id, &url, res),
         }
     }
 
@@ -329,10 +375,73 @@ impl App {
             return;
         }
         match self.screen {
+            Screen::Library => self.key_library(key),
             Screen::Search => self.key_search(key),
             Screen::Sources => self.key_sources(key),
             Screen::Manga => self.key_manga(key),
             Screen::Reader => self.key_reader(key),
+            Screen::AnilistPick => self.key_anilist_pick(key),
+        }
+    }
+
+    fn key_library(&mut self, key: KeyEvent) {
+        let len = self.library.favorites.len();
+        match key.code {
+            KeyCode::Char('q') => self.quit = true,
+            KeyCode::Char('/') | KeyCode::Char('s') | KeyCode::Tab => {
+                self.screen = Screen::Search;
+                self.editing = true;
+            }
+            KeyCode::Up | KeyCode::Char('k') => select_prev(&mut self.library_state),
+            KeyCode::Down | KeyCode::Char('j') => select_next(&mut self.library_state, len),
+            KeyCode::Char('d') | KeyCode::Delete => {
+                let Some(i) = self.library_state.selected().filter(|&i| i < len) else { return };
+                let fav = self.library.favorites.remove(i);
+                self.save_library();
+                self.status = format!("quitado de favoritos: {}", fav.manga.title);
+                self.library_state.select(if self.library.favorites.is_empty() { None } else { Some(i.min(len - 2)) });
+            }
+            KeyCode::Enter => {
+                let Some(fav) = self.library_state.selected().and_then(|i| self.library.favorites.get(i)).cloned() else {
+                    return;
+                };
+                match self.sources.iter().find(|s| s.info.id == fav.source_id).cloned() {
+                    Some(src) => {
+                        self.manga_back = Screen::Library;
+                        self.open_manga(src, fav.manga, false);
+                    }
+                    None if self.host.is_none() => self.status = "esperando a que carguen las extensiones…".into(),
+                    None => self.status = format!("la fuente {} no está instalada", fav.source_name),
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn key_anilist_pick(&mut self, key: KeyEvent) {
+        let len = self.anilist_matches.as_ref().map_or(0, Vec::len);
+        match key.code {
+            KeyCode::Esc | KeyCode::Char('q') | KeyCode::Backspace => self.screen = Screen::Manga,
+            KeyCode::Up | KeyCode::Char('k') => select_prev(&mut self.anilist_state),
+            KeyCode::Down | KeyCode::Char('j') => select_next(&mut self.anilist_state, len),
+            KeyCode::Enter => {
+                let Some(media) = self.anilist_state.selected().and_then(|i| self.anilist_matches.as_ref()?.get(i)).cloned()
+                else {
+                    return;
+                };
+                let Some(fav) = self.current_favorite_mut() else { return };
+                fav.anilist = Some(AniListLink {
+                    media_id: media.id,
+                    title: media.display_title(),
+                    synced_progress: None,
+                    synced_status: None,
+                    synced_at: None,
+                });
+                self.save_library();
+                self.screen = Screen::Manga;
+                self.anilist_sync(false);
+            }
+            _ => {}
         }
     }
 
@@ -357,13 +466,16 @@ impl App {
         match key.code {
             KeyCode::Char('q') => self.quit = true,
             KeyCode::Char('/') | KeyCode::Char('s') | KeyCode::Esc => self.editing = true,
+            KeyCode::Char('b') | KeyCode::Tab => self.screen = Screen::Library,
             KeyCode::Up | KeyCode::Char('k') => select_prev(&mut self.groups_state),
             KeyCode::Down | KeyCode::Char('j') => select_next(&mut self.groups_state, self.groups.len()),
             KeyCode::Enter => {
                 let Some(i) = self.groups_state.selected() else { return };
                 if self.groups[i].entries.len() == 1 {
                     let (src, manga) = self.groups[i].entries[0].clone();
-                    self.open_manga(src, manga);
+                    self.group = None;
+                    self.manga_back = Screen::Search;
+                    self.open_manga(src, manga, false);
                 } else {
                     self.group = Some(i);
                     self.sources_state.select(Some(0));
@@ -384,7 +496,8 @@ impl App {
             KeyCode::Enter => {
                 if let Some(i) = self.sources_state.selected() {
                     let (src, manga) = self.groups[g].entries[i].clone();
-                    self.open_manga(src, manga);
+                    self.manga_back = Screen::Sources;
+                    self.open_manga(src, manga, false);
                 }
             }
             _ => {}
@@ -396,7 +509,39 @@ impl App {
         match key.code {
             KeyCode::Esc | KeyCode::Char('q') | KeyCode::Backspace => {
                 self.generation += 1;
-                self.screen = if self.group.is_some() { Screen::Sources } else { Screen::Search };
+                self.screen = self.manga_back;
+            }
+            KeyCode::Char('f') => self.toggle_favorite(),
+            KeyCode::Char('e') => {
+                let Some(fav) = self.current_favorite_mut() else {
+                    self.status = "primero agregalo a favoritos (f)".into();
+                    return;
+                };
+                fav.status = fav.status.next();
+                let label = fav.status.label();
+                self.save_library();
+                self.status = format!("estado: {label} (tocá 'a' para enviarlo a AniList)");
+            }
+            KeyCode::Char('a') => self.anilist_sync(false),
+            KeyCode::Char('A') => self.anilist_sync(true),
+            KeyCode::Char('r') => {
+                if let Some((src, manga)) = self.current.clone() {
+                    self.open_manga(src, manga, true);
+                }
+            }
+            KeyCode::Char('c') => {
+                // Continuar: abrir el último capítulo leído en la página donde quedó
+                let last = self.current_favorite().and_then(|f| f.last_read.clone());
+                let index = last.as_ref().and_then(|l| self.details.as_ref()?.chapters.iter().position(|c| c.url == l.chapter_url));
+                match (index, last) {
+                    (Some(i), Some(l)) => {
+                        self.open_chapter(i);
+                        if let Some(r) = self.reader.as_mut() {
+                            r.page = l.page;
+                        }
+                    }
+                    _ => self.status = "no hay lectura para continuar".into(),
+                }
             }
             KeyCode::Up | KeyCode::Char('k') => select_prev(&mut self.chapters_state),
             KeyCode::Down | KeyCode::Char('j') => select_next(&mut self.chapters_state, len),
@@ -420,6 +565,7 @@ impl App {
                 // Al volver, dejar seleccionado el capítulo que se estaba leyendo
                 self.chapters_state.select(Some(r.chapter));
                 self.reader = None;
+                self.save_library();
                 self.generation += 1;
                 self.screen = Screen::Manga;
                 self.clear = true;
@@ -527,7 +673,7 @@ impl App {
         self.groups_state.select(index.or((!self.groups.is_empty()).then_some(0)));
     }
 
-    fn open_manga(&mut self, source: LoadedSource, manga: Manga) {
+    fn open_manga(&mut self, source: LoadedSource, manga: Manga, refresh: bool) {
         let Some(host) = self.host.clone() else { return };
         self.generation += 1;
         let generation = self.generation;
@@ -538,9 +684,120 @@ impl App {
         self.screen = Screen::Manga;
         let tx = self.tx.clone();
         tokio::spawn(async move {
-            let res = host.details(&source.info.id, &manga).await;
+            let res = host.details(&source.info.id, &manga, refresh).await;
             let _ = tx.send(Msg::Details(generation, res));
         });
+    }
+
+    // ───────────────────────────── favoritos y AniList ─────────────────────────────
+
+    fn current_favorite(&self) -> Option<&crate::library::Favorite> {
+        let (src, manga) = self.current.as_ref()?;
+        self.library.favorites.iter().find(|f| f.is(&src.info.id, &manga.url))
+    }
+
+    fn current_favorite_mut(&mut self) -> Option<&mut crate::library::Favorite> {
+        let (src, manga) = self.current.as_ref()?;
+        self.library.get_mut(&src.info.id, &manga.url)
+    }
+
+    fn save_library(&mut self) {
+        if let Err(e) = self.library.save() {
+            self.status = format!("no se pudo guardar la biblioteca: {e}");
+        }
+    }
+
+    fn toggle_favorite(&mut self) {
+        let Some((src, manga)) = self.current.clone() else { return };
+        // Guardar los datos completos si ya cargaron (portada, autor…), pero con la url original como clave
+        let mut full = self.details.as_ref().map(|d| d.manga.clone()).unwrap_or_else(|| manga.clone());
+        full.url = manga.url.clone();
+        if full.title.is_empty() {
+            full.title = manga.title.clone();
+        }
+        let added = self.library.toggle(&src.info.id, &src.info.name, &src.info.lang, &full);
+        self.save_library();
+        self.status = if added { "★ agregado a favoritos".into() } else { "quitado de favoritos".into() };
+        if added {
+            self.library_state.select(Some(self.library.favorites.len() - 1));
+        }
+    }
+
+    /// Sincroniza el favorito actual con AniList. La primera vez (o con `relink`) pide elegir la obra.
+    fn anilist_sync(&mut self, relink: bool) {
+        if Credentials::load().is_none() {
+            self.status = "no hay sesión de AniList: ejecutá `mangaterm anilist login` en otra terminal".into();
+            return;
+        }
+        let Some(fav) = self.current_favorite().cloned() else {
+            self.status = "primero agregalo a favoritos (f)".into();
+            return;
+        };
+        match fav.anilist.filter(|_| !relink) {
+            Some(link) => {
+                let creds = Credentials::load().unwrap();
+                self.status = format!("sincronizando con AniList: {}…", link.title);
+                let tx = self.tx.clone();
+                let (source_id, url) = (fav.source_id.clone(), fav.manga.url.clone());
+                let (status, progress) = (fav.status.as_anilist(), fav.progress);
+                tokio::spawn(async move {
+                    let res = anilist::sync(&creds, link.media_id, status, progress).await;
+                    let _ = tx.send(Msg::AnilistSynced(source_id, url, res));
+                });
+            }
+            None => {
+                self.anilist_matches = None;
+                self.screen = Screen::AnilistPick;
+                let tx = self.tx.clone();
+                let title = fav.manga.title.clone();
+                tokio::spawn(async move {
+                    let _ = tx.send(Msg::AnilistMatches(anilist::search(&title).await));
+                });
+            }
+        }
+    }
+
+    fn on_synced(&mut self, source_id: &str, url: &str, res: Result<SyncResult>) {
+        let Some(fav) = self.library.get_mut(source_id, url) else { return };
+        match res {
+            Ok(r) => {
+                let progress = r.entry.progress.unwrap_or(fav.progress);
+                let status = r.entry.status.as_deref().and_then(Status::from_anilist).unwrap_or(fav.status);
+                // Si AniList tenía más capítulos leídos, adoptarlos localmente
+                fav.progress = fav.progress.max(progress);
+                fav.status = status;
+                if let Some(link) = fav.anilist.as_mut() {
+                    link.synced_progress = Some(fav.progress);
+                    link.synced_status = Some(status);
+                    link.synced_at = Some(crate::library::now());
+                }
+                self.status = format!(
+                    "✓ AniList: {} · capítulo {}{}",
+                    status.label(),
+                    progress,
+                    if r.kept_remote_progress { " (AniList ya tenía más progreso; se conservó)" } else { "" }
+                );
+            }
+            Err(e) => self.status = format!("✗ AniList: {e}"),
+        }
+        self.save_library();
+    }
+
+    /// Guarda dónde quedó la lectura y marca el capítulo como leído al llegar a su última página.
+    fn track_progress(&mut self) {
+        let Some(r) = self.reader.as_ref() else { return };
+        let chapter = r.chapters[r.chapter].clone();
+        let (page, last_page) = (r.page, !r.pages.is_empty() && r.page + 1 >= r.pages.len());
+        let (source_id, url) = (r.source.info.id.clone(), r.manga_url.clone());
+        let Some(fav) = self.library.get_mut(&source_id, &url) else { return };
+        fav.last_read = Some(LastRead { chapter_url: chapter.url.clone(), chapter_name: chapter.name.clone(), page });
+        if last_page {
+            let before = fav.progress;
+            fav.mark_chapter_read(&chapter);
+            if fav.progress != before {
+                self.save_library();
+            }
+        }
     }
 
     fn open_chapter(&mut self, index: usize) {
@@ -553,6 +810,7 @@ impl App {
         let chapter = details.chapters[index].clone();
         self.reader = Some(Reader {
             source: source.clone(),
+            manga_url: manga.url.clone(),
             manga: details.manga.title.is_empty().then_some(manga).unwrap_or_else(|| details.manga.clone()),
             chapters: details.chapters.clone(),
             chapter: index,
@@ -564,6 +822,8 @@ impl App {
         });
         self.screen = Screen::Reader;
         self.clear = true;
+        self.track_progress();
+        self.save_library();
         let tx = self.tx.clone();
         tokio::spawn(async move {
             let res = host.pages(&source.info.id, &chapter).await;
@@ -579,6 +839,7 @@ impl App {
             r.images.retain(|&i, _| i.abs_diff(page) <= KEEP_AROUND);
             r.requested.retain(|&i| i.abs_diff(page) <= KEEP_AROUND);
         }
+        self.track_progress();
         self.prefetch();
     }
 
@@ -660,11 +921,73 @@ impl App {
 
     fn draw(&mut self, f: &mut Frame) {
         match self.screen {
+            Screen::Library => self.draw_library(f),
             Screen::Search => self.draw_search(f),
             Screen::Sources => self.draw_sources(f),
             Screen::Manga => self.draw_manga(f),
             Screen::Reader => self.draw_reader(f),
+            Screen::AnilistPick => self.draw_anilist_pick(f),
         }
+    }
+
+    fn draw_library(&mut self, f: &mut Frame) {
+        let [list_area, status_area] = Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(f.area());
+        let items: Vec<ListItem> = self
+            .library
+            .favorites
+            .iter()
+            .map(|fav| {
+                let anilist = match &fav.anilist {
+                    None => Span::raw("  AniList: –").fg(Color::DarkGray),
+                    Some(_) if fav.needs_sync() => Span::raw("  AniList: ↻ sin sincronizar").fg(Color::Yellow),
+                    Some(_) => Span::raw("  AniList: ✓").fg(Color::Green),
+                };
+                ListItem::new(Line::from(vec![
+                    Span::raw("★ ").fg(Color::Yellow),
+                    Span::raw(fav.manga.title.clone()).bold(),
+                    Span::raw(format!("  {} · {} · cap. {}", fav.source_name, fav.status.label(), fav.progress)).fg(Color::Gray),
+                    anilist,
+                ]))
+            })
+            .collect();
+        let title = format!(" mangaterm · biblioteca ({}) ", self.library.favorites.len());
+        if items.is_empty() {
+            let msg = "Todavía no hay favoritos.\n\nBuscá un manga (tecla /), abrilo y tocá 'f' para guardarlo acá.";
+            f.render_widget(Paragraph::new(msg).fg(Color::DarkGray).block(block(&title)), list_area);
+        } else {
+            f.render_stateful_widget(highlight(List::new(items).block(block(&title))), list_area, &mut self.library_state);
+        }
+        status_line(f, status_area, &self.status, "enter abrir · d quitar · / buscar · q salir");
+    }
+
+    fn draw_anilist_pick(&mut self, f: &mut Frame) {
+        let [list_area, status_area] = Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(f.area());
+        let manga = self.current.as_ref().map(|(_, m)| m.title.clone()).unwrap_or_default();
+        let title = format!(" ¿Cuál es «{manga}» en AniList? ");
+        match &self.anilist_matches {
+            None => f.render_widget(Paragraph::new("buscando en AniList…").fg(Color::DarkGray).block(block(&title)), list_area),
+            Some(list) => {
+                let items: Vec<ListItem> = list
+                    .iter()
+                    .map(|m| {
+                        let year = m.start_date.as_ref().and_then(|d| d.year).map(|y| y.to_string()).unwrap_or_default();
+                        let chapters = m.chapters.map(|c| format!(" · {c} caps")).unwrap_or_default();
+                        let english = m.title.english.clone().filter(|e| Some(e) != m.title.romaji.as_ref());
+                        ListItem::new(Line::from(vec![
+                            Span::raw(m.display_title()).bold(),
+                            Span::raw(english.map(|e| format!("  ({e})")).unwrap_or_default()).fg(Color::Gray),
+                            Span::raw(format!(
+                                "  {} {year}{chapters}",
+                                m.format.clone().unwrap_or_default()
+                            ))
+                            .fg(Color::DarkGray),
+                        ]))
+                    })
+                    .collect();
+                f.render_stateful_widget(highlight(List::new(items).block(block(&title))), list_area, &mut self.anilist_state);
+            }
+        }
+        status_line(f, status_area, "elegí la obra para vincular", "↑↓ mover · enter vincular y sincronizar · esc cancelar");
     }
 
     fn draw_search(&mut self, f: &mut Frame) {
@@ -749,6 +1072,23 @@ impl App {
         if let Some(genre) = m.genre.as_ref().filter(|g| !g.is_empty()) {
             lines.push(Line::from(genre.clone()).fg(Color::DarkGray));
         }
+        match self.current_favorite() {
+            Some(fav) => {
+                let anilist = match &fav.anilist {
+                    None => Span::raw("AniList: sin vincular ('a' para vincular)").fg(Color::DarkGray),
+                    Some(link) if fav.needs_sync() => {
+                        Span::raw(format!("AniList: {} · cambios sin sincronizar ('a')", link.title)).fg(Color::Yellow)
+                    }
+                    Some(link) => Span::raw(format!("AniList: {} · sincronizado", link.title)).fg(Color::Green),
+                };
+                lines.push(Line::from(vec![
+                    Span::raw("★ favorito").fg(Color::Yellow),
+                    Span::raw(format!(" · {} · leídos: {} · ", fav.status.label(), fav.progress)),
+                    anilist,
+                ]));
+            }
+            None => lines.push(Line::from("☆ no está en favoritos ('f' para agregar)").fg(Color::DarkGray)),
+        }
         if let Some(desc) = &m.description {
             lines.push(Line::from(desc.replace(['\n', '\r'], " ")));
         }
@@ -772,7 +1112,7 @@ impl App {
                 f.render_stateful_widget(highlight(List::new(items).block(block(&title))), list_area, &mut self.chapters_state);
             }
         }
-        status_line(f, status_area, &self.status, "↑↓ mover · g/G inicio/fin · enter leer · esc volver");
+        status_line(f, status_area, &self.status, "enter leer · c continuar · f favorito · e estado · a AniList · r recargar · esc");
     }
 
     fn draw_reader(&mut self, f: &mut Frame) {

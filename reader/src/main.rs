@@ -1,6 +1,9 @@
+mod anilist;
+mod cache;
 mod catalog;
 mod ext;
 mod host;
+mod library;
 mod model;
 mod paths;
 mod render;
@@ -32,6 +35,23 @@ enum Cmd {
     /// Gestiona extensiones
     #[command(subcommand)]
     Ext(ExtCmd),
+    /// Cuenta de AniList
+    #[command(subcommand)]
+    Anilist(AnilistCmd),
+}
+
+#[derive(Subcommand)]
+enum AnilistCmd {
+    /// Inicia sesión (abre el navegador y pide pegar el token)
+    Login {
+        /// ID de tu API client de AniList (https://anilist.co/settings/developer)
+        #[arg(long)]
+        client_id: Option<String>,
+    },
+    /// Muestra la sesión actual
+    Status,
+    /// Borra el token guardado
+    Logout,
 }
 
 #[derive(Subcommand)]
@@ -67,7 +87,29 @@ async fn main() -> Result<()> {
         None => tui::run().await,
         Some(Cmd::Search { query, lang }) => cli_search(query, lang).await,
         Some(Cmd::Ext(cmd)) => ext_cmd(cmd).await,
+        Some(Cmd::Anilist(cmd)) => anilist_cmd(cmd).await,
     }
+}
+
+async fn anilist_cmd(cmd: AnilistCmd) -> Result<()> {
+    match cmd {
+        AnilistCmd::Login { client_id } => {
+            let creds = anilist::login(client_id).await?;
+            println!("✓ sesión iniciada como {} (token guardado en {})", creds.user_name, paths::anilist_file().display());
+        }
+        AnilistCmd::Status => match anilist::Credentials::load() {
+            Some(c) => match anilist::viewer(&c.token).await {
+                Ok((_, name)) => println!("✓ conectado como {name}"),
+                Err(e) => println!("✗ {} (token guardado, pero {e})", c.user_name),
+            },
+            None => println!("sin sesión; usá `mangaterm anilist login`"),
+        },
+        AnilistCmd::Logout => {
+            anilist::Credentials::delete();
+            println!("sesión cerrada");
+        }
+    }
+    Ok(())
 }
 
 async fn cli_search(query: String, lang: Option<String>) -> Result<()> {

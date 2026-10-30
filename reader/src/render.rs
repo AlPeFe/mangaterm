@@ -159,7 +159,7 @@ mod tests {
     }
 
     fn save_decoded(sixel: &str, path: &std::path::Path) {
-        let img = icy_sixel::sixel_decode(sixel.as_bytes()).unwrap();
+        let img = icy_sixel::SixelImage::decode(sixel.as_bytes()).unwrap();
         image::RgbaImage::from_raw(img.width as u32, img.height as u32, img.pixels).unwrap().save(path).unwrap();
     }
 }

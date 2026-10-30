@@ -1,0 +1,9 @@
+# Texto normalizado a LF en el repo; los scripts de shell siempre con LF (en Linux un CRLF los rompe)
+* text=auto eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+gradlew text eol=lf
+*.sh text eol=lf
+*.jar binary
+*.png binary
+*.jpg binary

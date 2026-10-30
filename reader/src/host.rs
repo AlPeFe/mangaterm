@@ -1,6 +1,7 @@
 //! Cliente de ext-host: lanza la JVM y habla JSON (una línea por mensaje) por stdin/stdout.
 //! Los pedidos se multiplexan por id, así que se pueden hacer muchos en paralelo.
 
+use crate::cache;
 use crate::ext::Installed;
 use crate::model::{Chapter, Manga, MangaDetails, MangasPage, Page, SourceInfo};
 use crate::paths;
@@ -17,6 +18,8 @@ use tokio::process::{Child, ChildStdin, Command};
 use tokio::sync::oneshot;
 
 type Pending = Arc<Mutex<HashMap<u64, oneshot::Sender<Result<Value>>>>>;
+
+const DETAILS_TTL: std::time::Duration = std::time::Duration::from_secs(30 * 60);
 
 pub struct Host {
     stdin: tokio::sync::Mutex<ChildStdin>,
@@ -123,8 +126,18 @@ impl Host {
         self.call("search", json!({ "source": source, "query": query, "page": page })).await
     }
 
-    pub async fn details(&self, source: &str, manga: &Manga) -> Result<MangaDetails> {
-        self.call("manga", json!({ "source": source, "manga": manga })).await
+    /// Detalles y capítulos. Cacheados 30 min para no repetir pedidos al volver a un manga;
+    /// `refresh` fuerza ir a la fuente (para ver capítulos nuevos).
+    pub async fn details(&self, source: &str, manga: &Manga, refresh: bool) -> Result<MangaDetails> {
+        let key = format!("{source}|{}", manga.url);
+        if !refresh {
+            if let Some(hit) = cache::get("details", &key, DETAILS_TTL) {
+                return Ok(hit);
+            }
+        }
+        let details: MangaDetails = self.call("manga", json!({ "source": source, "manga": manga })).await?;
+        cache::put("details", &key, &details);
+        Ok(details)
     }
 
     pub async fn pages(&self, source: &str, chapter: &Chapter) -> Result<Vec<Page>> {

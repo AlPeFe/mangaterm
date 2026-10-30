@@ -1,6 +1,7 @@
 //! Búsqueda global: lanza la misma consulta en todas las fuentes a la vez y
 //! entrega los resultados por un canal a medida que cada fuente responde.
 
+use crate::cache;
 use crate::host::{Host, LoadedSource};
 use crate::model::Manga;
 use std::sync::Arc;
@@ -8,6 +9,7 @@ use std::time::Duration;
 use tokio::sync::mpsc;
 
 const TIMEOUT: Duration = Duration::from_secs(25);
+const SEARCH_TTL: Duration = Duration::from_secs(10 * 60);
 
 #[derive(Debug)]
 pub enum SearchEvent {
@@ -22,8 +24,17 @@ pub fn global(host: Arc<Host>, sources: Vec<LoadedSource>, query: String) -> mps
         let tasks = sources.into_iter().map(|source| {
             let (host, tx, query) = (host.clone(), tx.clone(), query.clone());
             tokio::spawn(async move {
+                // Repetir la misma búsqueda en poco tiempo no vuelve a pegarle a los sitios
+                let key = format!("{}|{}", source.info.id, query.trim().to_lowercase());
+                if let Some(mangas) = cache::get::<Vec<Manga>>("search", &key, SEARCH_TTL) {
+                    let _ = tx.send(SearchEvent::Results { source, mangas });
+                    return;
+                }
                 let event = match tokio::time::timeout(TIMEOUT, host.search(&source.info.id, &query, 1)).await {
-                    Ok(Ok(page)) => SearchEvent::Results { source, mangas: page.mangas },
+                    Ok(Ok(page)) => {
+                        cache::put("search", &key, &page.mangas);
+                        SearchEvent::Results { source, mangas: page.mangas }
+                    }
                     Ok(Err(e)) => SearchEvent::Failed { source, error: short_error(&e.to_string()) },
                     Err(_) => SearchEvent::Failed { source, error: "tiempo de espera agotado".into() },
                 };

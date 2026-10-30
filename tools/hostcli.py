@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-HOST = ROOT / "ext-host" / "build" / "install" / "ext-host" / "bin" / "ext-host.bat"
+HOST = ROOT / "ext-host" / "build" / "install" / "ext-host" / "bin" / ("ext-host.bat" if os.name == "nt" else "ext-host")
 
 
 class Host:

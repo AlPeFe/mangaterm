@@ -63,7 +63,7 @@ pub struct MangasPage {
     pub mangas: Vec<Manga>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MangaDetails {
     pub manga: Manga,
     pub chapters: Vec<Chapter>,
