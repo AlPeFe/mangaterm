@@ -22,7 +22,7 @@ pub const DEVELOPER_URL: &str = "https://anilist.co/settings/developer";
 const TIMEOUT: Duration = Duration::from_secs(5 * 60);
 
 /// Client ID de Han Thỏ registrado en AniList (Redirect URL = `REDIRECT`).
-pub const PROJECT_CLIENT_ID: Option<&str> = None;
+pub const PROJECT_CLIENT_ID: Option<&str> = Some("55485");
 
 /// El client ID a usar: `HANTHO_ANILIST_CLIENT_ID`, el configurado localmente, o el del proyecto.
 pub fn client_id() -> Option<String> {
