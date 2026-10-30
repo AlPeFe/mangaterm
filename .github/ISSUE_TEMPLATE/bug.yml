@@ -20,13 +20,13 @@ body:
     attributes:
       label: Pasos para reproducirlo
       placeholder: |
-        1. mangaterm search "..."
+        1. hantho search "..."
         2. ...
   - type: input
     id: version
     attributes:
       label: Versión / commit
-      placeholder: "mangaterm --version, o el hash de git"
+      placeholder: "hantho --version, o el hash de git"
   - type: dropdown
     id: so
     attributes:

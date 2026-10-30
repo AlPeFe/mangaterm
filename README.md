@@ -1,8 +1,8 @@
 <div align="center">
 
-<img src="assets/logo.svg" alt="Logo de mangaterm: una flor de sakura en una ventana de terminal" width="128" height="128">
+<img src="assets/logo.svg" alt="Logo de Han Thỏ: una flor de sakura en una ventana de terminal" width="128" height="128">
 
-# mangaterm
+# Han Thỏ
 
 **Manga en tu terminal, con las extensiones de Mihon y un toque de sakura.**
 
@@ -16,7 +16,7 @@
 
 ---
 
-mangaterm es un lector de manga para la terminal. Busca en cientos de fuentes a la vez usando las
+**Han Thỏ** (en la terminal, `hantho`) es un lector de manga para la terminal. Busca en cientos de fuentes a la vez usando las
 mismas extensiones de [Keiyoushi](https://github.com/keiyoushi/extensions) que usa
 [Mihon](https://github.com/mihonapp/mihon) en Android, muestra las páginas como imágenes de verdad
 (Sixel o Kitty) y lleva tu progreso a [AniList](https://anilist.co).
@@ -25,7 +25,7 @@ mismas extensiones de [Keiyoushi](https://github.com/keiyoushi/extensions) que u
 
 - **Sin salir de la terminal.** Si vivís en una consola (o por SSH), no hace falta abrir el navegador
   ni el celular para leer un capítulo.
-- **El ecosistema de Mihon, en el escritorio.** En lugar de reescribir scrapers, mangaterm ejecuta las
+- **El ecosistema de Mihon, en el escritorio.** En lugar de reescribir scrapers, Han Thỏ ejecuta las
   extensiones existentes (más de 1400, en 150 idiomas) en una JVM normal. Cuando una fuente cambia,
   se actualiza la extensión y listo.
 - **Pensado para manga.** Un render Sixel propio, ajustado para páginas en blanco y negro: sin moiré en
@@ -109,26 +109,26 @@ cd reader; cargo build --release; cd ..
 
 Usá **Windows Terminal** (la consola clásica `conhost` no muestra imágenes).
 
-El binario queda en `reader/target/release/mangaterm` (`mangaterm.exe` en Windows). Si lo movés
-fuera del repo, definí `MANGATERM_HOST_LIB` apuntando a `ext-host/build/install/ext-host/lib`.
+El binario queda en `reader/target/release/hantho` (`hantho.exe` en Windows). Si lo movés
+fuera del repo, definí `HANTHO_HOST_LIB` apuntando a `ext-host/build/install/ext-host/lib`.
 
 ## Uso
 
 ```bash
-mangaterm ext install --lang es   # instala todas las extensiones en español
-mangaterm                         # abre la TUI
+hantho ext install --lang es   # instala todas las extensiones en español
+hantho                         # abre la TUI
 ```
 
 Desde la línea de comandos, sin TUI:
 
 | Comando | Qué hace |
 |---|---|
-| `mangaterm search "grand blue" [--lang es]` | Busca en todas las fuentes instaladas |
-| `mangaterm ext update` | Descarga el catálogo más reciente de Keiyoushi |
-| `mangaterm ext find [texto] [--lang es] [--sfw]` | Busca extensiones en el catálogo |
-| `mangaterm ext install <nombre…> [--lang es] [--sfw]` | Instala por nombre/paquete o todas las de un idioma |
-| `mangaterm ext list` / `ext remove <paquete>` | Lista o desinstala extensiones |
-| `mangaterm anilist login\|status\|logout` | Maneja la cuenta de AniList |
+| `hantho search "grand blue" [--lang es]` | Busca en todas las fuentes instaladas |
+| `hantho ext update` | Descarga el catálogo más reciente de Keiyoushi |
+| `hantho ext find [texto] [--lang es] [--sfw]` | Busca extensiones en el catálogo |
+| `hantho ext install <nombre…> [--lang es] [--sfw]` | Instala por nombre/paquete o todas las de un idioma |
+| `hantho ext list` / `ext remove <paquete>` | Lista o desinstala extensiones |
+| `hantho anilist login\|status\|logout` | Maneja la cuenta de AniList |
 
 ### Teclas
 
@@ -146,11 +146,14 @@ En todas las listas funcionan `↑`/`↓` y `k`/`j`; `esc` o `q` vuelve atrás; 
 
 | Variable | Para qué |
 |---|---|
-| `MANGATERM_HOME` | Carpeta de datos (por defecto `~/.mangaterm`) |
-| `MANGATERM_PROTOCOL` | Forzar `sixel`, `kitty`, `iterm2` o `halfblocks` |
-| `MANGATERM_FONT` | Tamaño de celda en píxeles, p. ej. `10x20`, si la detección falla |
-| `MANGATERM_HOST_LIB` | Ruta a `ext-host/lib` si el binario no está dentro del repo |
+| `HANTHO_HOME` | Carpeta de datos (por defecto `~/.hantho`) |
+| `HANTHO_PROTOCOL` | Forzar `sixel`, `kitty`, `iterm2` o `halfblocks` |
+| `HANTHO_FONT` | Tamaño de celda en píxeles, p. ej. `10x20`, si la detección falla |
+| `HANTHO_HOST_LIB` | Ruta a `ext-host/lib` si el binario no está dentro del repo |
 | `JAVA_HOME` | JVM a usar (si no, `java` del `PATH`) |
+
+> El proyecto antes se llamaba *mangaterm*. Si tenés datos en `~/.mangaterm`, se mueven solos a
+> `~/.hantho` la primera vez que abrís `hantho`.
 
 ## AniList
 
@@ -158,16 +161,16 @@ La sincronización es **manual**: vos decidís cuándo mandar el progreso.
 
 1. Creá un *API client* en <https://anilist.co/settings/developer> con Redirect URL
    `https://anilist.co/api/v2/oauth/pin`.
-2. Corré `mangaterm anilist login`, pegá el Client ID; se abre el navegador, autorizás y AniList te
+2. Corré `hantho anilist login`, pegá el Client ID; se abre el navegador, autorizás y AniList te
    muestra un token: pegalo en la terminal.
 3. En la TUI, abrí un manga de tu biblioteca y tocá `a`. La primera vez elegís la obra correcta en
    AniList; después se envían el estado y los capítulos leídos. `A` vuelve a elegir la obra.
 
-El progreso **nunca retrocede**: si AniList tiene más capítulos marcados que mangaterm, se conserva
-el de AniList. El token queda en `~/.mangaterm/anilist.json` (permisos `600` en Linux) y no sale de
+El progreso **nunca retrocede**: si AniList tiene más capítulos marcados que Han Thỏ, se conserva
+el de AniList. El token queda en `~/.hantho/anilist.json` (permisos `600` en Linux) y no sale de
 tu máquina más que hacia AniList.
 
-**Rate limiting y caché.** mangaterm hace como mucho 1 pedido cada 2 s a AniList (con ráfagas de 5),
+**Rate limiting y caché.** Han Thỏ hace como mucho 1 pedido cada 2 s a AniList (con ráfagas de 5),
 respeta `Retry-After` y `X-RateLimit-Remaining`, y reintenta con espera ante un 429. Las búsquedas en
 AniList se cachean una semana. Para las fuentes: las búsquedas se cachean 10 minutos y los detalles
 y capítulos 30 minutos (`r` fuerza la recarga).
@@ -193,7 +196,7 @@ flowchart LR
 ```
 
 - **Catálogo.** El índice de Keiyoushi (`index.pb`, protobuf con gzip) lista ~1440 extensiones y
-  ~2350 fuentes. mangaterm lo descarga e instala los `.jar` de cada extensión en `~/.mangaterm`.
+  ~2350 fuentes. Han Thỏ lo descarga e instala los `.jar` de cada extensión en `~/.hantho`.
 - **ext-host.** Las extensiones son clases JVM normales (ya convertidas desde dex), pero esperan
   vivir en Android. `ext-host` provee la implementación real de la API
   [`extensions-lib`](https://github.com/keiyoushi/extensions-lib) 1.6 (la publicada son solo stubs),
@@ -203,7 +206,7 @@ flowchart LR
   (`{"id":1,"op":"ping"}` → `{"id":1,"result":"pong"}`). Las búsquedas a muchas fuentes corren en
   paralelo y van llegando a medida que responden.
 - **Render.** `ratatui-image` detecta el protocolo y el tamaño de celda, pero escala con vecino más
-  cercano y usa un dithering fuerte que en manga produce moiré. Por eso mangaterm codifica su propio
+  cercano y usa un dithering fuerte que en manga produce moiré. Por eso Han Thỏ codifica su propio
   Sixel: escala con Lanczos3 al tamaño exacto en píxeles y usa 64 grises sin dithering para páginas en
   blanco y negro (o 256 colores con dithering suave para color). Una página tarda ~25 ms.
 
@@ -223,14 +226,14 @@ Más detalles técnicos en [`NOTES.md`](NOTES.md).
 
 ## Aviso legal
 
-mangaterm es un **lector**: no aloja, distribuye ni indexa contenido. Todo el material lo sirven
+Han Thỏ es un **lector**: no aloja, distribuye ni indexa contenido. Todo el material lo sirven
 sitios de terceros a través de extensiones mantenidas por la comunidad de
-[Keiyoushi](https://github.com/keiyoushi/extensions), que mangaterm descarga desde su repositorio
-público y no modifica. Los autores de mangaterm no tienen relación con esos sitios ni con las
+[Keiyoushi](https://github.com/keiyoushi/extensions), que Han Thỏ descarga desde su repositorio
+público y no modifica. Los autores de Han Thỏ no tienen relación con esos sitios ni con las
 extensiones, y no se hacen responsables por su contenido ni por su legalidad en tu país.
 
 Respetá los derechos de autor y, cuando puedas, apoyá a los autores leyendo y comprando por canales
-oficiales. mangaterm no está afiliado con Mihon, Tachiyomi, Keiyoushi ni AniList.
+oficiales. Han Thỏ no está afiliado con Mihon, Tachiyomi, Keiyoushi ni AniList.
 
 ## Contribuir
 

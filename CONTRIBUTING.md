@@ -6,10 +6,10 @@
 
 - **¿Una fuente no anda o falta una?** Si también falla en Mihon, el problema es de la extensión:
   reportalo en [keiyoushi/extensions](https://github.com/keiyoushi/extensions/issues). Si anda en
-  Mihon pero no en mangaterm, es nuestro (probablemente falta un *shim* de Android): abrí un issue
-  con el nombre de la extensión y el error que muestra `mangaterm search`.
+  Mihon pero no en Han Thỏ, es nuestro (probablemente falta un *shim* de Android): abrí un issue
+  con el nombre de la extensión y el error que muestra `hantho search`.
 - Las fuentes con Cloudflare no se pueden usar por ahora (ver *Limitaciones* en el README).
-- No compartas tu token de AniList ni el contenido de `~/.mangaterm/anilist.json` en un issue.
+- No compartas tu token de AniList ni el contenido de `~/.hantho/anilist.json` en un issue.
 
 ## Desarrollo
 
@@ -24,7 +24,7 @@
 - `tools/`: scripts de prueba en Python (cliente del host, pruebas de Sixel).
 - `NOTES.md` tiene la investigación técnica (formato del índice, API de extensions-lib, render).
 
-Usá `MANGATERM_HOME=/tmp/mangaterm-dev` para no tocar tus datos reales mientras probás.
+Usá `HANTHO_HOME=/tmp/hantho-dev` para no tocar tus datos reales mientras probás.
 
 ## Pull requests
 

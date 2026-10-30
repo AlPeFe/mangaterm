@@ -1,5 +1,27 @@
 # Propuesta de nombre
 
+## Decisión
+
+Se eligió **Han Thỏ** como nombre visible y **`hantho`** como comando, por encima de la
+recomendación `sakuyomi` que se describe más abajo. Ya está aplicado en el código: crate y binario
+`hantho`, datos en `~/.hantho` (se migran solos desde `~/.mangaterm`), variables `HANTHO_*` y
+paquete `hantho.host` en el host. El repo de GitHub sigue siendo `AlPeFe/mangaterm` por ahora.
+
+Verificación de choques de `hantho` (2026-10-30):
+
+- **crates.io** (`cargo search hantho`): ningún resultado, el nombre está libre.
+- **GitHub** (`gh search repos hantho`): nada con ese nombre exacto. Lo más parecido es
+  `flizzywine/Hanthon` (Python en chino, 6★) y repos personales sin estrellas (`hanthogenny`,
+  `Hanthoigian`…). Ninguno es un lector de manga ni una herramienta de terminal.
+- **Distros** (Repology): ningún paquete `hantho`.
+
+Conclusión: sin colisiones relevantes. Si se quiere `cargo install hantho`, conviene publicar o
+reservar el crate pronto.
+
+---
+
+## Propuesta original
+
 "mangaterm" describe bien lo que hace, pero es largo para tipear, genérico y no tiene nada de la
 estética rosa pastel / sakura de la TUI. Esta es una lista de alternativas con lo que encontré
 al verificar choques (consultado el 2026-10-30).
@@ -11,8 +33,7 @@ al verificar choques (consultado el 2026-10-30).
 - Paquetes de distros: API de [Repology](https://repology.org/) (`/api/v1/project/<nombre>`), que
   cubre Debian, Ubuntu, Arch, AUR, Fedora, Nix, Homebrew, Scoop, winget, etc.
 
-Nada de esto está renombrado todavía: el binario, el crate, `~/.mangaterm`, las variables
-`MANGATERM_*` y el repo siguen igual hasta que se decida.
+(Lo que sigue es la propuesta tal como se escribió antes de la decisión.)
 
 ## Candidatos
 
