@@ -3,6 +3,7 @@ package hantho.host
 import android.app.Application
 import android.content.SharedPreferences
 import eu.kanade.tachiyomi.network.NetworkHelper
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -13,6 +14,7 @@ import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.longOrNull
+import kotlinx.serialization.protobuf.ProtoBuf
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.addSingleton
 import uy.kohesive.injekt.api.addSingletonFactory
@@ -30,6 +32,7 @@ object HostDirs {
 object HostEnv {
     val app = Application()
 
+    @OptIn(ExperimentalSerializationApi::class)
     fun init() {
         Injekt.addSingleton(app)
         Injekt.addSingletonFactory { NetworkHelper(app) }
@@ -39,6 +42,7 @@ object HostEnv {
                 explicitNulls = false
             }
         }
+        Injekt.addSingletonFactory<ProtoBuf> { ProtoBuf }
     }
 }
 

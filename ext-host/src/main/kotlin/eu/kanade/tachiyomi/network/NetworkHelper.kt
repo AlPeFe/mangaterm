@@ -1,6 +1,7 @@
 package eu.kanade.tachiyomi.network
 
 import android.content.Context
+import android.webkit.CookieManager
 import okhttp3.Cache
 import okhttp3.Cookie
 import okhttp3.CookieJar
@@ -10,15 +11,16 @@ import okhttp3.OkHttpClient
 import okhttp3.Response
 import java.io.File
 import java.io.IOException
-import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 
 class NetworkHelper(context: Context) {
     val client: OkHttpClient = OkHttpClient.Builder()
-        .connectTimeout(30, TimeUnit.SECONDS)
+        // Corto: si una web no responde (caída o bloqueada), mejor fallar rápido; OkHttp además
+        // prueba cada IP del dominio, así que el tiempo total se multiplica
+        .connectTimeout(8, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
         .callTimeout(2, TimeUnit.MINUTES)
-        .cookieJar(MemoryCookieJar())
+        .cookieJar(SharedCookieJar())
         .cache(Cache(File(context.getCacheDir(), "network_cache"), 50L * 1024 * 1024))
         // keiyoushi.source.KeiSource exige estos tres por nombre de clase (y que NO haya BrotliInterceptor:
         // agrega su propio CompressionInterceptor)
@@ -73,22 +75,9 @@ class CloudflareInterceptor : Interceptor {
     }
 }
 
-/** Cookies en memoria por host; alcanza para sesiones simples. */
-private class MemoryCookieJar : CookieJar {
-    private val store = ConcurrentHashMap<String, MutableList<Cookie>>()
+/** El cookie jar del cliente usa el CookieManager compartido (como Mihon en Android). */
+private class SharedCookieJar : CookieJar {
+    override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) = CookieManager.getInstance().save(url, cookies)
 
-    override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) {
-        val list = store.getOrPut(url.host) { mutableListOf() }
-        synchronized(list) {
-            list.removeAll { old -> cookies.any { it.name == old.name } }
-            list.addAll(cookies)
-        }
-    }
-
-    override fun loadForRequest(url: HttpUrl): List<Cookie> {
-        val now = System.currentTimeMillis()
-        return store.entries
-            .filter { (host, _) -> url.host == host || url.host.endsWith(".$host") }
-            .flatMap { (_, list) -> synchronized(list) { list.filter { it.expiresAt > now && it.matches(url) } } }
-    }
+    override fun loadForRequest(url: HttpUrl): List<Cookie> = CookieManager.getInstance().load(url)
 }
