@@ -1,4 +1,4 @@
-# mangaterm: notas de investigación
+# Han Thỏ: notas de investigación
 
 Lector de manga para terminal. Rust (motor, TUI, render) + `ext-host` en Kotlin/JVM
 que ejecuta las extensiones de Mihon/Keiyoushi.

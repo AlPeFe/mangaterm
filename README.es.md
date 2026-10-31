@@ -6,7 +6,7 @@
 
 **Manga en tu terminal, con las extensiones de Mihon y un toque de sakura.**
 
-[![CI](https://github.com/AlPeFe/mangaterm/actions/workflows/ci.yml/badge.svg)](https://github.com/AlPeFe/mangaterm/actions/workflows/ci.yml)
+[![CI](https://github.com/AlPeFe/hantho/actions/workflows/ci.yml/badge.svg)](https://github.com/AlPeFe/hantho/actions/workflows/ci.yml)
 [![Licencia: Apache-2.0](https://img.shields.io/badge/licencia-Apache--2.0-FFB6D5?labelColor=241A22)](LICENSE)
 ![Linux](https://img.shields.io/badge/Linux-✓-A0ECC8?labelColor=241A22&logo=linux&logoColor=white)
 ![Windows](https://img.shields.io/badge/Windows-✓-C8B2FF?labelColor=241A22&logo=windows&logoColor=white)
@@ -111,8 +111,8 @@ curl https://sh.rustup.rs -sSf | sh
 ```
 
 ```bash
-git clone https://github.com/AlPeFe/mangaterm.git
-cd mangaterm
+git clone https://github.com/AlPeFe/hantho.git
+cd hantho
 (cd ext-host && ./gradlew installDist)
 (cd reader && cargo build --release)
 ```
@@ -126,8 +126,8 @@ winget install EclipseAdoptium.Temurin.21.JDK Rustlang.Rustup Git.Git Microsoft.
 ```
 
 ```powershell
-git clone https://github.com/AlPeFe/mangaterm.git
-cd mangaterm
+git clone https://github.com/AlPeFe/hantho.git
+cd hantho
 cd ext-host; .\gradlew.bat installDist; cd ..
 cd reader; cargo build --release; cd ..
 ```

@@ -57,7 +57,7 @@ reloads it by itself within a couple of seconds.
 ## Connecting it
 
 Use the full path to the binary. On Windows, for example,
-`C:\Users\<you>\Documents\claude\mangaterm\reader\target\release\hantho.exe`; on Linux,
+`C:\Users\<you>\hantho\reader\target\release\hantho.exe`; on Linux,
 `/path/to/repo/reader/target/release/hantho`.
 
 ### Claude Code

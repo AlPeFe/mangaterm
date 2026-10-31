@@ -5,7 +5,7 @@
 Se eligió **Han Thỏ** como nombre visible y **`hantho`** como comando, por encima de la
 recomendación `sakuyomi` que se describe más abajo. Ya está aplicado en el código: crate y binario
 `hantho`, datos en `~/.hantho` (se migran solos desde `~/.mangaterm`), variables `HANTHO_*` y
-paquete `hantho.host` en el host. El repo de GitHub sigue siendo `AlPeFe/mangaterm` por ahora.
+paquete `hantho.host` en el host. El repo de GitHub también se llama `AlPeFe/hantho`.
 
 Verificación de choques de `hantho` (2026-10-30):
 

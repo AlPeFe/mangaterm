@@ -55,7 +55,7 @@ abierta, la TUI lo recarga sola en un par de segundos.
 ## Conectarlo
 
 Usa la ruta completa al binario. En Windows, por ejemplo,
-`C:\Users\<tú>\Documents\claude\mangaterm\reader\target\release\hantho.exe`; en Linux,
+`C:\Users\<tú>\hantho\reader\target\release\hantho.exe`; en Linux,
 `/ruta/al/repo/reader/target/release/hantho`.
 
 ### Claude Code
