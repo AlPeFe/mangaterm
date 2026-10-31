@@ -39,8 +39,15 @@ mismas extensiones de [Keiyoushi](https://github.com/keiyoushi/extensions) que u
 - 📖 **Lector** con imágenes Sixel o Kitty; fallback a bloques de color si la terminal no tiene gráficos.
   Precarga de páginas siguientes.
 - 💗 **Biblioteca**: favoritos, estado de lectura (leyendo, en pausa, completado…), "continuar" donde lo dejaste.
+- ✓ **Capítulos leídos**: se marcan solos al terminar un capítulo y se ven apagados en la lista; en mangas
+  de mil capítulos, filtra (`/`), salta a un número (`#`) o avanza de cien en cien.
 - 🧩 **Extensiones** de Keiyoushi: instalar por nombre o por idioma, buscar, actualizar, filtrar NSFW.
-- ☁️ **AniList**: sincronización manual de estado y capítulos leídos, que nunca hace retroceder tu progreso.
+- ☁️ **AniList**: login por navegador sin copiar nada; cada manga se vincula con su obra (solo si es una
+  coincidencia exacta, o eligiéndola tú) y el progreso se envía al terminar capítulos. Nunca retrocede.
+- ⇄ **Backups de Mihon**: importa un `.tachibk` (favoritos, leídos, vínculos con AniList; instala solas las
+  extensiones que falten) y exporta tu biblioteca para restaurarla en Mihon.
+- 🤖 **Servidor MCP**: Claude Code, Codex y otros agentes pueden buscar, consultar tu biblioteca, marcar
+  capítulos y abrir el lector en un panel al lado del chat ([`docs/mcp.md`](docs/mcp.md)).
 - 🐢 **Respetuoso con los servicios**: rate limiting y caché tanto para AniList como para las fuentes.
 - 🐧🪟 **Linux y Windows**, probado en CI en ambos.
 
@@ -129,6 +136,10 @@ Desde la línea de comandos, sin TUI:
 | `hantho ext install <nombre…> [--lang es] [--sfw]` | Instala por nombre/paquete o todas las de un idioma |
 | `hantho ext list` / `ext remove <paquete>` | Lista o desinstala extensiones |
 | `hantho anilist login\|status\|logout` | Gestiona la cuenta de AniList (login por navegador) |
+| `hantho open "título" [--continue\|--chapter N] [--side]` | Abre un favorito directamente en el lector (`--side`: en un panel al lado) |
+| `hantho backup import <archivo.tachibk>` | Importa un backup de Mihon |
+| `hantho backup export [--out archivo]` | Exporta la biblioteca a un `.tachibk` para Mihon |
+| `hantho mcp` | Servidor MCP por stdio para agentes ([`docs/mcp.md`](docs/mcp.md)) |
 
 ### Teclas
 
@@ -136,10 +147,12 @@ En todas las listas funcionan `↑`/`↓` y `k`/`j`; `esc` o `q` vuelve atrás; 
 
 | Pantalla | Teclas |
 |---|---|
-| Inicio | `1`–`5` o `enter` elegir · `/` buscar · `q` salir |
+| Inicio | `1`–`6` o `enter` elegir · `/` buscar · `q` salir |
 | Biblioteca | `enter` abrir · `d` quitar · `/` buscar |
 | Búsqueda | escribe y pulsa `enter` · `tab`/`↓` ir a resultados · `/` editar · `b` biblioteca |
-| Manga | `enter` leer · `c` continuar · `f` favorito · `e` estado · `a` sincronizar AniList · `A` re-vincular · `r` recargar · `g`/`G` primero/último |
+| Manga | `enter` leer · `c` continuar · `f` favorito · `e` estado · `a` vincular/sincronizar AniList · `A` re-vincular · `r` recargar |
+| Capítulos | `m` marcar/desmarcar leído · `M` marcar este y los anteriores · `/` filtrar · `#` ir al capítulo N · `[`/`]` ±100 · `g`/`G` primero/último · `o` invertir orden |
+| Backup Mihon | `enter` exportar o importar el archivo elegido · `r` buscar archivos de nuevo |
 | AniList | `l` iniciar sesión · `o` cerrar sesión · `d` registrar la app (solo si falta el client ID) |
 | Lector | `→` `espacio` `l` siguiente · `←` `h` anterior · `n`/`p` capítulo siguiente/anterior · `g`/`G` primera/última página |
 
@@ -159,14 +172,15 @@ En todas las listas funcionan `↑`/`↓` y `k`/`j`; `esc` o `q` vuelve atrás; 
 
 ## AniList
 
-La sincronización es **manual**: tú decides cuándo enviar el progreso.
-
 1. **Inicia sesión.** En la TUI, ve a *AniList* desde el menú y pulsa `l` (o ejecuta
    `hantho anilist login`). Se abre el navegador, pulsas *Approve* y ya está: no hay que copiar ni
    pegar nada, ni salir de la TUI. `o` cierra la sesión.
-2. **Sincroniza.** Abre un manga de tu biblioteca y pulsa `a`. La primera vez eliges la obra correcta
-   en AniList; después se envían el estado y los capítulos leídos. `A` vuelve a elegir la obra. Si
-   todavía no has iniciado sesión, `a` te lleva a la pantalla de AniList.
+2. **Vincula cada manga.** Tener la cuenta conectada no basta: Han Thỏ tiene que saber qué obra de
+   AniList es cada favorito (el mismo título puede tener manga, novela y spin-offs). Al añadir un
+   favorito se vincula solo si el título coincide exactamente; si no, abre el manga y pulsa `a` para
+   elegir la obra (`A` la vuelve a elegir). Desde un agente, la herramienta MCP `link_anilist`.
+3. **Lee.** Cada capítulo que terminas o marcas como leído actualiza AniList automáticamente.
+   `a` también fuerza un envío, por ejemplo después de cambiar el estado con `e`.
 
 El progreso **nunca retrocede**: si AniList tiene más capítulos marcados que Han Thỏ, se conserva
 el de AniList. El token queda en `~/.hantho/anilist.json` (permisos `600` en Linux) y no sale de
@@ -249,7 +263,9 @@ Más detalles técnicos en [`NOTES.md`](NOTES.md).
   `Uri.Builder`, `Dispatchers.Main`…) y fallan al cargar o al buscar.
 - **Sin pantalla de ajustes de extensiones.** Las preferencias de cada fuente quedan en sus valores
   por defecto.
-- **Sin descargas offline** ni seguimiento automático de capítulos nuevos (por ahora).
+- **Sin descargas offline** ni aviso de capítulos nuevos (por ahora).
+- **Panel lateral del MCP**: necesita una terminal que se pueda dividir (Windows Terminal, tmux, WezTerm,
+  zellij o kitty); si no, el lector se abre en una ventana nueva.
 - **macOS** no está probado; debería funcionar, pero no hay CI.
 
 ## Aviso legal
