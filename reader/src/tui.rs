@@ -382,9 +382,9 @@ impl App {
             Msg::Resize => self.clear = true,
             Msg::HostReady(Ok((host, sources, errors))) => {
                 self.status = format!("{} fuentes listas", sources.len())
-                    + &if errors > 0 { format!(" ({errors} extensiones no cargaron)") } else { String::new() };
+                    + &if errors > 0 { format!(" ({errors} extensiones no han cargado)") } else { String::new() };
                 if sources.is_empty() {
-                    self.status = "no hay extensiones: instalá con `hantho ext install --lang es`".into();
+                    self.status = "no hay extensiones: instálalas con `hantho ext install --lang es`".into();
                 }
                 self.host = Some(host);
                 self.sources = sources;
@@ -457,7 +457,7 @@ impl App {
             Msg::Details(..) | Msg::Pages(..) | Msg::Image(..) | Msg::Encoded(..) => {}
             Msg::AnilistMatches(res) if self.screen == Screen::AnilistPick => match res {
                 Ok(list) if list.is_empty() => {
-                    self.status = "AniList no encontró ese título".into();
+                    self.status = "AniList no ha encontrado ese título".into();
                     self.screen = Screen::Manga;
                 }
                 Ok(list) => {
@@ -543,7 +543,7 @@ impl App {
     fn key_anilist(&mut self, key: KeyEvent) {
         if self.anilist_login {
             if key.code == KeyCode::Esc {
-                self.status = "login en curso: si cerraste el navegador, se cancela solo a los 5 min".into();
+                self.status = "login en curso: si has cerrado el navegador, se cancela solo a los 5 min".into();
             }
             return;
         }
@@ -574,7 +574,7 @@ impl App {
     fn start_anilist_login(&mut self) {
         let Some(id) = anilist_auth::client_id() else { return };
         self.anilist_login = true;
-        self.status = "se abrió el navegador: aprobá el acceso en AniList".into();
+        self.status = "se ha abierto el navegador: aprueba el acceso en AniList".into();
         let tx = self.tx.clone();
         tokio::spawn(async move {
             let _ = tx.send(Msg::AnilistLogin(anilist_auth::login(&id).await));
@@ -777,13 +777,13 @@ impl App {
             KeyCode::Char('f') => self.toggle_favorite(),
             KeyCode::Char('e') => {
                 let Some(fav) = self.current_favorite_mut() else {
-                    self.status = "primero agregalo a favoritos (f)".into();
+                    self.status = "primero añádelo a favoritos (f)".into();
                     return;
                 };
                 fav.status = fav.status.next();
                 let label = fav.status.label();
                 self.save_library();
-                self.status = format!("estado: {label} (tocá 'a' para enviarlo a AniList)");
+                self.status = format!("estado: {label} (pulsa 'a' para enviarlo a AniList)");
             }
             KeyCode::Char('a') => self.anilist_sync(false),
             KeyCode::Char('A') => self.anilist_sync(true),
@@ -803,7 +803,7 @@ impl App {
                             r.page = l.page;
                         }
                     }
-                    _ => self.status = "no hay lectura para continuar".into(),
+                    _ => self.status = "no hay ninguna lectura que continuar".into(),
                 }
             }
             KeyCode::Up | KeyCode::Char('k') => select_prev(&mut self.chapters_state),
@@ -1036,7 +1036,7 @@ impl App {
 
     fn save_library(&mut self) {
         if let Err(e) = self.library.save() {
-            self.status = format!("no se pudo guardar la biblioteca: {e}");
+            self.status = format!("no se ha podido guardar la biblioteca: {e}");
         }
     }
 
@@ -1050,7 +1050,7 @@ impl App {
         }
         let added = self.library.toggle(&src.info.id, &src.info.name, &src.info.lang, &full);
         self.save_library();
-        self.status = if added { "★ agregado a favoritos".into() } else { "quitado de favoritos".into() };
+        self.status = if added { "★ añadido a favoritos".into() } else { "quitado de favoritos".into() };
         if added {
             self.library_state.select(Some(self.library.favorites.len() - 1));
         }
@@ -1059,12 +1059,12 @@ impl App {
     /// Sincroniza el favorito actual con AniList. La primera vez (o con `relink`) pide elegir la obra.
     fn anilist_sync(&mut self, relink: bool) {
         if Credentials::load().is_none() {
-            self.status = "conectá tu cuenta de AniList (tecla l)".into();
+            self.status = "conecta tu cuenta de AniList (tecla l)".into();
             self.screen = Screen::AniList;
             return;
         }
         let Some(fav) = self.current_favorite().cloned() else {
-            self.status = "primero agregalo a favoritos (f)".into();
+            self.status = "primero añádelo a favoritos (f)".into();
             return;
         };
         match fav.anilist.filter(|_| !relink) {
@@ -1109,7 +1109,7 @@ impl App {
                     "✓ AniList: {} · capítulo {}{}",
                     status.label(),
                     progress,
-                    if r.kept_remote_progress { " (AniList ya tenía más progreso; se conservó)" } else { "" }
+                    if r.kept_remote_progress { " (AniList ya tenía más progreso; se ha conservado)" } else { "" }
                 );
             }
             Err(e) => self.status = format!("✗ AniList: {e}"),
@@ -1140,7 +1140,7 @@ impl App {
 
     fn save_reads(&mut self) {
         if let Err(e) = self.reads.save() {
-            self.status = format!("no se pudo guardar el registro de leídos: {e}");
+            self.status = format!("no se ha podido guardar el registro de leídos: {e}");
         }
     }
 
@@ -1501,14 +1501,14 @@ impl App {
         if self.library.favorites.is_empty() {
             let msg = vec![
                 Line::raw(""),
-                Line::from("todavía no hay favoritos").fg(TEXT).centered(),
+                Line::from("todavía no tienes favoritos").fg(TEXT).centered(),
                 Line::raw(""),
                 Line::from(vec![
-                    Span::raw("buscá un manga con ").fg(MUTED),
+                    Span::raw("busca un manga con ").fg(MUTED),
                     Span::raw("/").fg(PINK).bold(),
-                    Span::raw(", abrilo y tocá ").fg(MUTED),
+                    Span::raw(", ábrelo y pulsa ").fg(MUTED),
                     Span::raw("f").fg(PINK).bold(),
-                    Span::raw(" para guardarlo acá ✿").fg(MUTED),
+                    Span::raw(" para guardarlo aquí ✿").fg(MUTED),
                 ])
                 .centered(),
             ];
@@ -1572,7 +1572,7 @@ impl App {
             f,
             status_area,
             "EXTENSIONES",
-            "instalá más con `hantho ext install <nombre>` o `--lang es`",
+            "instala más con `hantho ext install <nombre>` o `--lang es`",
             &[("↑↓", "mover"), ("esc", "menú")],
         );
     }
@@ -1597,7 +1597,7 @@ impl App {
                 lines.push(Line::from(pending_line));
                 lines.push(Line::raw(""));
                 lines.push(Line::from(vec![
-                    Span::raw("  para sincronizar, abrí un favorito y tocá ").fg(MUTED),
+                    Span::raw("  para sincronizar, abre un favorito y pulsa ").fg(MUTED),
                     Span::raw("a").fg(PINK).bold(),
                 ]));
             }
@@ -1607,25 +1607,25 @@ impl App {
                     Span::raw("esperando que apruebes en el navegador…").fg(TEXT),
                 ]));
                 lines.push(Line::raw(""));
-                lines.push(Line::from("  en la página de AniList tocá «Approve»;").fg(MUTED));
+                lines.push(Line::from("  en la página de AniList pulsa «Approve»;").fg(MUTED));
                 lines.push(Line::from("  Han Thỏ recibe la sesión solo, no hace falta copiar nada ✿").fg(MUTED));
             }
             None if anilist_auth::client_id().is_some() => {
                 lines.push(Line::from("  sin sesión").fg(TEXT));
                 lines.push(Line::raw(""));
                 lines.push(Line::from(vec![
-                    Span::raw("  tocá ").fg(MUTED),
+                    Span::raw("  pulsa ").fg(MUTED),
                     Span::raw("l").fg(PINK).bold(),
                     Span::raw(" para conectar tu cuenta: se abre el navegador,").fg(MUTED),
                 ]));
-                lines.push(Line::from("  aprobás el acceso y listo.").fg(MUTED));
+                lines.push(Line::from("  apruebas el acceso y listo.").fg(MUTED));
             }
             None => {
                 let cursor = if self.tick % 16 < 9 { "▏" } else { " " };
                 lines.push(Line::from("  configuración única: registrar Han Thỏ en AniList").fg(TEXT));
                 lines.push(Line::raw(""));
                 lines.push(Line::from(vec![
-                    Span::raw("  1. tocá ").fg(MUTED),
+                    Span::raw("  1. pulsa ").fg(MUTED),
                     Span::raw("d").fg(PINK).bold(),
                     Span::raw(" (abre anilist.co/settings/developer) → Create New Client").fg(MUTED),
                 ]));
@@ -1635,7 +1635,7 @@ impl App {
                     Span::raw("  ·  Redirect URL: ").fg(MUTED),
                     Span::raw(anilist_auth::REDIRECT).fg(LAVENDER),
                 ]));
-                lines.push(Line::from("  3. pegá acá el ID del client y enter:").fg(MUTED));
+                lines.push(Line::from("  3. pega aquí el ID del client y pulsa enter:").fg(MUTED));
                 lines.push(Line::raw(""));
                 lines.push(Line::from(vec![
                     Span::raw("     ID: ").fg(MUTED),
@@ -1681,9 +1681,9 @@ impl App {
 
         let mut lines: Vec<Line> = if self.backup_report.is_empty() {
             let hint = if self.backup_files.is_empty() {
-                "no encontré backups: en Mihon, Más → Copia de seguridad → Crear, y dejá el .tachibk en Descargas o Documentos (r para buscar de nuevo)"
+                "no se han encontrado backups: en Mihon, Más → Copia de seguridad → Crear, y deja el .tachibk en Descargas o Documentos (r para buscar de nuevo)"
             } else {
-                "importar agrega favoritos, capítulos leídos y vínculos con AniList; instala solas las extensiones que falten"
+                "importar añade favoritos, capítulos leídos y vínculos con AniList; instala solas las extensiones que falten"
             };
             vec![Line::from(hint).fg(MUTED)]
         } else {
@@ -1736,7 +1736,7 @@ impl App {
                 );
             }
         }
-        theme::status_bar(f, status_area, "ANILIST", "elegí la obra para vincular", &[("enter", "vincular y sincronizar"), ("esc", "cancelar")]);
+        theme::status_bar(f, status_area, "ANILIST", "elige la obra que quieres vincular", &[("enter", "vincular y sincronizar"), ("esc", "cancelar")]);
     }
 
     fn draw_search(&mut self, f: &mut Frame) {
@@ -1744,7 +1744,7 @@ impl App {
             Layout::vertical([Constraint::Length(3), Constraint::Min(1), Constraint::Length(1)]).areas(f.area());
 
         let input = if self.input.is_empty() && self.editing {
-            Line::from(vec![Span::raw("▏").fg(PINK), Span::raw("¿qué querés leer hoy?").fg(FAINT).italic()])
+            Line::from(vec![Span::raw("▏").fg(PINK), Span::raw("¿qué te apetece leer hoy?").fg(FAINT).italic()])
         } else {
             let cursor = if self.editing && self.tick % 16 < 9 { "▏" } else { " " };
             Line::from(vec![Span::raw(self.input.clone()).fg(TEXT), Span::raw(cursor).fg(PINK)])
@@ -1781,7 +1781,7 @@ impl App {
         if self.pending > 0 {
             status = format!("{} buscando… faltan {} fuentes", theme::spinner(self.tick), self.pending);
         } else if !self.query.is_empty() && !self.failures.is_empty() {
-            status = format!("{status} · {} fuentes fallaron", self.failures.len());
+            status = format!("{status} · {} fuentes han fallado", self.failures.len());
         }
         let keys: &[(&str, &str)] = if self.editing {
             &[("enter", "buscar"), ("↓", "resultados"), ("esc", "menú")]
@@ -1807,7 +1807,7 @@ impl App {
             .collect();
         let title = format!("{} · en {} fuentes", g.title, g.entries.len());
         f.render_stateful_widget(theme::highlight(List::new(items).block(theme::block_focused(&title))), list_area, &mut self.sources_state);
-        theme::status_bar(f, status_area, "FUENTE", "elegí de dónde leerlo", &[("enter", "abrir"), ("esc", "volver")]);
+        theme::status_bar(f, status_area, "FUENTE", "elige de dónde leerlo", &[("enter", "abrir"), ("esc", "volver")]);
     }
 
     fn draw_manga(&mut self, f: &mut Frame) {
@@ -1850,7 +1850,7 @@ impl App {
                 Span::raw("♡ ").fg(FAINT),
                 Span::raw("no está en favoritos · ").fg(MUTED),
                 Span::raw("f").fg(PINK).bold(),
-                Span::raw(" para agregarlo").fg(MUTED),
+                Span::raw(" para añadirlo").fg(MUTED),
             ])),
         }
         if let Some(desc) = &m.description {
@@ -1951,7 +1951,7 @@ impl App {
             f.render_widget(Paragraph::new(format!("✕ {err}")).fg(ERROR).wrap(Wrap { trim: true }).centered(), image_area);
         } else if let (true, Some(page)) = (ready, page) {
             if let Some((_, enc)) = page.encoded.as_ref().filter(|_| sixel) {
-                // La imagen la escribe flush_sixel() después del frame; acá solo la info
+                // La imagen la escribe flush_sixel() después del frame; aquí solo la info
                 let kind = if enc.gray { "gris" } else { "color" };
                 info += &format!("  · sixel {kind} {}×{} · celda {}×{}", enc.out.0, enc.out.1, font.0, font.1);
             } else if let Some(proto) = page.proto.as_mut() {
@@ -2109,7 +2109,7 @@ mod tests {
 
         let mut terminal = Terminal::new(TestBackend::new(120, 30)).unwrap();
         app.screen = Screen::Library;
-        app.status = "★ agregado a favoritos".into();
+        app.status = "★ añadido a favoritos".into();
         terminal.draw(|f| app.draw(f)).unwrap();
         theme::dump_buffer(terminal.backend().buffer(), &format!("{dir}/library.json"));
 

@@ -19,7 +19,7 @@ pub fn migrate_legacy() {
     if old.is_dir() && !new.exists() {
         match std::fs::rename(&old, &new) {
             Ok(()) => eprintln!("✿ datos movidos de {} a {}", old.display(), new.display()),
-            Err(e) => eprintln!("no se pudieron mover los datos de {}: {e}", old.display()),
+            Err(e) => eprintln!("no se han podido mover los datos de {}: {e}", old.display()),
         }
     }
 }

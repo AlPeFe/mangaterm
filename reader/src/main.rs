@@ -62,7 +62,7 @@ enum BackupCmd {
 
 #[derive(Subcommand)]
 enum AnilistCmd {
-    /// Inicia sesión: abre el navegador, aprobás y listo (también desde la TUI con `l`)
+    /// Inicia sesión: abre el navegador, apruebas y listo (también desde la TUI con `l`)
     Login {
         /// Client ID de AniList, si este binario no trae uno (se guarda para la próxima)
         #[arg(long)]
@@ -164,7 +164,7 @@ async fn anilist_cmd(cmd: AnilistCmd) -> Result<()> {
                     anilist_auth::REDIRECT
                 );
             };
-            println!("✿ se abrió el navegador: aprobá el acceso en AniList y volvé acá…");
+            println!("✿ se ha abierto el navegador: aprueba el acceso en AniList y vuelve aquí…");
             let creds = anilist_auth::login(&id).await?;
             println!("✓ conectado como @{}", creds.user_name);
         }
@@ -173,7 +173,7 @@ async fn anilist_cmd(cmd: AnilistCmd) -> Result<()> {
                 Ok((_, name)) => println!("✓ conectado como {name}"),
                 Err(e) => println!("✗ {} (token guardado, pero {e})", c.user_name),
             },
-            None => println!("sin sesión; usá `hantho anilist login`"),
+            None => println!("sin sesión; usa `hantho anilist login`"),
         },
         AnilistCmd::Logout => {
             anilist::Credentials::delete();
@@ -186,7 +186,7 @@ async fn anilist_cmd(cmd: AnilistCmd) -> Result<()> {
 async fn cli_search(query: String, lang: Option<String>) -> Result<()> {
     let installed = ext::list();
     if installed.is_empty() {
-        bail!("no hay extensiones instaladas; probá `hantho ext install --lang es`");
+        bail!("no hay extensiones instaladas; prueba con `hantho ext install --lang es`");
     }
     let started = std::time::Instant::now();
     let host = Host::spawn().await?;

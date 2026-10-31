@@ -147,7 +147,7 @@ fn status_to_mihon(s: Status) -> i32 {
 }
 
 pub fn read_file(path: &Path) -> Result<Backup> {
-    let raw = std::fs::read(path).with_context(|| format!("no se pudo leer {}", path.display()))?;
+    let raw = std::fs::read(path).with_context(|| format!("no se ha podido leer {}", path.display()))?;
     // Mihon siempre comprime, pero los backups viejos o editados pueden venir sin gzip
     let bytes = if raw.starts_with(&[0x1f, 0x8b]) {
         let mut out = Vec::new();
@@ -345,7 +345,7 @@ pub fn write_file(backup: &Backup, path: &Path) -> Result<()> {
     }
     let mut gz = GzEncoder::new(Vec::new(), flate2::Compression::default());
     gz.write_all(&backup.encode_to_vec())?;
-    std::fs::write(path, gz.finish()?).with_context(|| format!("no se pudo escribir {}", path.display()))?;
+    std::fs::write(path, gz.finish()?).with_context(|| format!("no se ha podido escribir {}", path.display()))?;
     Ok(())
 }
 

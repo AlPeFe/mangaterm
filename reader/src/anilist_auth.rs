@@ -51,16 +51,16 @@ pub fn save_client_id(id: &str) -> Result<()> {
 pub async fn login(client_id: &str) -> Result<Credentials> {
     // "localhost" puede resolver a IPv4 o IPv6 según el sistema: escuchar en los dos
     let v4 = TcpListener::bind(("127.0.0.1", PORT)).await.with_context(|| {
-        format!("el puerto {PORT} está ocupado (¿hay otro login abierto?); cerralo y probá de nuevo")
+        format!("el puerto {PORT} está ocupado (¿hay otro login abierto?); ciérralo y vuelve a intentarlo")
     })?;
     let v6 = TcpListener::bind(("::1", PORT)).await.ok();
 
     anilist::open_browser(&anilist::authorize_url(client_id));
     let token = tokio::time::timeout(TIMEOUT, serve(v4, v6))
         .await
-        .map_err(|_| anyhow!("se venció el tiempo de espera (5 min) sin que se aprobara el acceso"))??;
+        .map_err(|_| anyhow!("se ha agotado el tiempo de espera (5 min) sin que se aprobara el acceso"))??;
 
-    let (user_id, user_name) = anilist::viewer(&token).await.context("AniList no aceptó el token")?;
+    let (user_id, user_name) = anilist::viewer(&token).await.context("AniList no ha aceptado el token")?;
     let creds = Credentials { client_id: client_id.to_string(), token, user_id, user_name };
     creds.save()?;
     Ok(creds)
@@ -117,13 +117,13 @@ async fn handle(stream: TcpStream) -> Result<Option<Result<String>>> {
             match (field("token"), field("error")) {
                 (Some(token), _) if token.len() > 20 => ("200 OK", String::from("ok"), Some(Ok(token))),
                 (_, Some(error)) => {
-                    let msg = if error == "access_denied" { "cancelaste el acceso en AniList".into() } else { error };
+                    let msg = if error == "access_denied" { "has cancelado el acceso en AniList".into() } else { error };
                     ("200 OK", String::from("ok"), Some(Err(anyhow!(msg))))
                 }
                 _ => ("400 Bad Request", String::from("sin token"), None),
             }
         }
-        _ => ("404 Not Found", page("<p>nada por acá ✿</p>"), None),
+        _ => ("404 Not Found", page("<p>aquí no hay nada ✿</p>"), None),
     };
 
     let content_type = if body.starts_with("<!doctype") { "text/html; charset=utf-8" } else { "text/plain; charset=utf-8" };
@@ -173,7 +173,7 @@ const CALLBACK_BODY: &str = r#"<div class="flor">✿</div><h1>Han Thỏ</h1><p i
 const hash = new URLSearchParams(location.hash.slice(1));
 const query = new URLSearchParams(location.search);
 const token = hash.get('access_token');
-const error = hash.get('error') || query.get('error') || (token ? null : 'AniList no devolvió un token');
+const error = hash.get('error') || query.get('error') || (token ? null : 'AniList no ha devuelto ningún token');
 const body = token ? 'token=' + encodeURIComponent(token) : 'error=' + encodeURIComponent(error);
 history.replaceState(null, '', location.pathname); // que el token no quede en el historial
 fetch('/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body })
@@ -181,10 +181,10 @@ fetch('/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-
     const msg = document.getElementById('msg');
     msg.className = token ? 'ok' : 'err';
     msg.innerHTML = token
-      ? '✓ ¡listo! ya podés cerrar esta pestaña y volver a la terminal'
-      : '✕ ' + error.replace(/[<>&]/g, '') + '<br><small>volvé a la terminal para reintentar</small>';
+      ? '✓ ¡listo! ya puedes cerrar esta pestaña y volver a la terminal'
+      : '✕ ' + error.replace(/[<>&]/g, '') + '<br><small>vuelve a la terminal para intentarlo de nuevo</small>';
   })
-  .catch(() => { document.getElementById('msg').textContent = '✕ no se pudo hablar con Han Thỏ (¿se cerró?)'; });
+  .catch(() => { document.getElementById('msg').textContent = '✕ no se ha podido hablar con Han Thỏ (¿se ha cerrado?)'; });
 </script>"#;
 
 #[cfg(test)]
@@ -220,7 +220,7 @@ mod tests {
     #[tokio::test]
     async fn reports_denied_access() {
         let err = browser_flow("error=access_denied").await.unwrap_err();
-        assert!(err.to_string().contains("cancelaste"));
+        assert!(err.to_string().contains("has cancelado"));
     }
 
     #[test]

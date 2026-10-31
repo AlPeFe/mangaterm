@@ -1,5 +1,5 @@
 //! Catálogo de extensiones de Keiyoushi (`index.pb`: protobuf comprimido con gzip).
-//! Schema oficial en `proto/index.proto`; acá se replica a mano con prost.
+//! Schema oficial en `proto/index.proto`; aquí se replica a mano con prost.
 
 use anyhow::{Context, Result};
 use flate2::read::GzDecoder;

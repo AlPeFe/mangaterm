@@ -109,14 +109,14 @@ async fn graphql<T: DeserializeOwned>(query: &str, variables: Value, token: Opti
         if let Some(token) = token {
             req = req.bearer_auth(token);
         }
-        let resp = req.send().await.context("no se pudo conectar con AniList")?;
+        let resp = req.send().await.context("no se ha podido conectar con AniList")?;
         let status = resp.status();
         let header = |name: &str| resp.headers().get(name).and_then(|v| v.to_str().ok()).and_then(|v| v.parse::<u64>().ok());
 
         if status.as_u16() == 429 || status.is_server_error() {
             let wait = header("Retry-After").unwrap_or(5 * (attempt as u64 + 1)).min(120);
             if attempt == MAX_RETRIES {
-                bail!("AniList pidió esperar (HTTP {status}); probá en un rato");
+                bail!("AniList ha pedido esperar (HTTP {status}); prueba dentro de un rato");
             }
             LIMITER.back_off(Duration::from_secs(wait)).await;
             continue;
@@ -130,7 +130,7 @@ async fn graphql<T: DeserializeOwned>(query: &str, variables: Value, token: Opti
         if let Some(err) = value["errors"].as_array().and_then(|e| e.first()) {
             let msg = err["message"].as_str().unwrap_or("error desconocido");
             if status.as_u16() == 401 || msg.contains("Invalid token") {
-                bail!("el token de AniList venció o es inválido; volvé a hacer `hantho anilist login`");
+                bail!("el token de AniList ha caducado o no es válido; vuelve a ejecutar `hantho anilist login`");
             }
             bail!("AniList: {msg}");
         }

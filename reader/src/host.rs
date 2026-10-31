@@ -50,7 +50,7 @@ impl Host {
             .stderr(Stdio::from(log))
             .kill_on_drop(true)
             .spawn()
-            .context("no se pudo lanzar java (¿JAVA_HOME?)")?;
+            .context("no se ha podido lanzar java (¿JAVA_HOME?)")?;
 
         let stdout = child.stdout.take().unwrap();
         let pending: Pending = Arc::default();
@@ -175,5 +175,5 @@ fn find_host_lib() -> Result<PathBuf> {
             }
         }
     }
-    bail!("no encontré ext-host; compilalo con `gradlew installDist` o definí HANTHO_HOST_LIB")
+    bail!("no se ha encontrado ext-host; compílalo con `gradlew installDist` o define HANTHO_HOST_LIB")
 }
