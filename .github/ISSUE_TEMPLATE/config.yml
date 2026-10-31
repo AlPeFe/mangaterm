@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Pedir una fuente nueva o reportar una extensión rota
+    url: https://github.com/keiyoushi/extensions/issues
+    about: Las extensiones las mantiene Keiyoushi; si también falla en Mihon, repórtala allí.
