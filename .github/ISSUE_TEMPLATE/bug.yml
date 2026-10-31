@@ -5,14 +5,14 @@ body:
   - type: markdown
     attributes:
       value: |
-        Si el problema es una fuente puntual que **también falla en Mihon**, reportalo en
+        Si el problema es una fuente puntual que **también falla en Mihon**, repórtalo en
         [keiyoushi/extensions](https://github.com/keiyoushi/extensions/issues).
         No pegues tu token de AniList ni `anilist.json`.
   - type: textarea
     id: que-paso
     attributes:
-      label: ¿Qué pasó?
-      description: Qué hiciste, qué esperabas y qué pasó en cambio.
+      label: ¿Qué ha pasado?
+      description: Qué has hecho, qué esperabas y qué ha pasado en su lugar.
     validations:
       required: true
   - type: textarea

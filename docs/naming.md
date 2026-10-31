@@ -22,7 +22,7 @@ reservar el crate pronto.
 
 ## Propuesta original
 
-"mangaterm" describe bien lo que hace, pero es largo para tipear, genérico y no tiene nada de la
+"mangaterm" describe bien lo que hace, pero es largo de escribir, genérico y no tiene nada de la
 estética rosa pastel / sakura de la TUI. Esta es una lista de alternativas con lo que encontré
 al verificar choques (consultado el 2026-10-30).
 
@@ -43,7 +43,7 @@ al verificar choques (consultado el 2026-10-30).
 | `hanakoma` | 花 *hana* (flor) + コマ *koma* (viñeta de manga) | 8 | libre | libre | libre |
 | `koma` | コマ: viñeta / cuadro de manga | 4 | sin crate exacto (hay `komac`, `komando`) | muchos `koma*`, ninguno igual y conocido | libre |
 | `tsuzuki` | 続き: "continuación" (el botón *continuar* leyendo) | 7 | libre | `tobfd/tsuzuki`: cliente Android de **AniList** (2★) | libre |
-| `komachi` | 小町: belleza clásica; suena tierno | 7 | libre | proyectos chicos sin relación (≤56★) | libre |
+| `komachi` | 小町: belleza clásica; suena tierno | 7 | libre | proyectos pequeños sin relación (≤56★) | libre |
 | `sakukoma` | sakura + koma | 8 | libre | libre | libre |
 
 ### Descartados por choque
@@ -51,7 +51,7 @@ al verificar choques (consultado el 2026-10-30).
 | Nombre | Por qué no |
 |---|---|
 | `yomu` (読む, leer) | Ya existe el crate `yomu`, **un lector de Markdown para terminal**, y `sendyhalim/Yomu` (lector de manga para macOS, 197★). Confusión garantizada. |
-| `shiori` (栞, señalador) | `go-shiori/shiori` (11,7k★, gestor de marcadores) está empaquetado en Nix y otras distros; crate `shiori` ocupado. |
+| `shiori` (栞, marcapáginas) | `go-shiori/shiori` (11,7k★, gestor de marcadores) está empaquetado en Nix y otras distros; crate `shiori` ocupado. |
 | `yomi` | Crate ocupado, nombre muy usado. |
 | `hanabira` (花びら, pétalo) | `hanabira.org` tiene su propio *manga reader* (60★). |
 | `komorebi` | Gestor de ventanas tiling muy conocido en Windows (crate y comando). |
@@ -75,7 +75,7 @@ al verificar choques (consultado el 2026-10-30).
 - ⚠️ Es un prefijo saturado en GitHub (komari, komanda, Komac…): difícil de encontrar buscando, y es probable que alguien más lo use pronto en un paquete de distro.
 
 **`tsuzuki`**
-- ✅ Lindo concepto ("seguir leyendo").
+- ✅ Bonito concepto ("seguir leyendo").
 - ❌ Ya hay un cliente de AniList llamado Tsuzuki; como este proyecto también sincroniza con AniList, se pisan en el mismo nicho.
 
 **`komachi`**
@@ -94,7 +94,7 @@ aceptando que va a costar más encontrarlo.
 
 ## Si se decide renombrar
 
-Lista de lo que habría que tocar (para hacerlo en un solo commit):
+Lista de lo que habría que cambiar (para hacerlo en un solo commit):
 
 - `reader/Cargo.toml` (`name`) y el nombre del binario.
 - Carpeta de datos `~/.mangaterm` → `~/.sakuyomi` (con migración: si existe la vieja y no la nueva, moverla).

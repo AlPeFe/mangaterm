@@ -11,8 +11,8 @@ body:
   - type: textarea
     id: propuesta
     attributes:
-      label: ¿Cómo te lo imaginás?
+      label: ¿Cómo te lo imaginas?
   - type: textarea
     id: alternativas
     attributes:
-      label: Alternativas que consideraste
+      label: Alternativas que has considerado

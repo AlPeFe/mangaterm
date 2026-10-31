@@ -23,11 +23,11 @@ mismas extensiones de [Keiyoushi](https://github.com/keiyoushi/extensions) que u
 
 ### ¿Por qué?
 
-- **Sin salir de la terminal.** Si vivís en una consola (o por SSH), no hace falta abrir el navegador
-  ni el celular para leer un capítulo.
+- **Sin salir de la terminal.** Si vives en una consola (o trabajas por SSH), no hace falta abrir el navegador
+  ni el móvil para leer un capítulo.
 - **El ecosistema de Mihon, en el escritorio.** En lugar de reescribir scrapers, Han Thỏ ejecuta las
   extensiones existentes (más de 1400, en 150 idiomas) en una JVM normal. Cuando una fuente cambia,
-  se actualiza la extensión y listo.
+  se actualiza la extensión y ya está.
 - **Pensado para manga.** Un render Sixel propio, ajustado para páginas en blanco y negro: sin moiré en
   las tramas ni ruido de dithering.
 
@@ -38,7 +38,7 @@ mismas extensiones de [Keiyoushi](https://github.com/keiyoushi/extensions) que u
   con resultados agrupados por obra.
 - 📖 **Lector** con imágenes Sixel o Kitty; fallback a bloques de color si la terminal no tiene gráficos.
   Precarga de páginas siguientes.
-- 💗 **Biblioteca**: favoritos, estado de lectura (leyendo, en pausa, completado…), "continuar" donde dejaste.
+- 💗 **Biblioteca**: favoritos, estado de lectura (leyendo, en pausa, completado…), "continuar" donde lo dejaste.
 - 🧩 **Extensiones** de Keiyoushi: instalar por nombre o por idioma, buscar, actualizar, filtrar NSFW.
 - ☁️ **AniList**: sincronización manual de estado y capítulos leídos, que nunca hace retroceder tu progreso.
 - 🐢 **Respetuoso con los servicios**: rate limiting y caché tanto para AniList como para las fuentes.
@@ -107,10 +107,10 @@ cd ext-host; .\gradlew.bat installDist; cd ..
 cd reader; cargo build --release; cd ..
 ```
 
-Usá **Windows Terminal** (la consola clásica `conhost` no muestra imágenes).
+Usa **Windows Terminal** (la consola clásica `conhost` no muestra imágenes).
 
-El binario queda en `reader/target/release/hantho` (`hantho.exe` en Windows). Si lo movés
-fuera del repo, definí `HANTHO_HOST_LIB` apuntando a `ext-host/build/install/ext-host/lib`.
+El binario queda en `reader/target/release/hantho` (`hantho.exe` en Windows). Si lo mueves
+fuera del repo, define `HANTHO_HOST_LIB` apuntando a `ext-host/build/install/ext-host/lib`.
 
 ## Uso
 
@@ -128,7 +128,7 @@ Desde la línea de comandos, sin TUI:
 | `hantho ext find [texto] [--lang es] [--sfw]` | Busca extensiones en el catálogo |
 | `hantho ext install <nombre…> [--lang es] [--sfw]` | Instala por nombre/paquete o todas las de un idioma |
 | `hantho ext list` / `ext remove <paquete>` | Lista o desinstala extensiones |
-| `hantho anilist login\|status\|logout` | Maneja la cuenta de AniList (login por navegador) |
+| `hantho anilist login\|status\|logout` | Gestiona la cuenta de AniList (login por navegador) |
 
 ### Teclas
 
@@ -138,7 +138,7 @@ En todas las listas funcionan `↑`/`↓` y `k`/`j`; `esc` o `q` vuelve atrás; 
 |---|---|
 | Inicio | `1`–`5` o `enter` elegir · `/` buscar · `q` salir |
 | Biblioteca | `enter` abrir · `d` quitar · `/` buscar |
-| Búsqueda | escribí y `enter` · `tab`/`↓` ir a resultados · `/` editar · `b` biblioteca |
+| Búsqueda | escribe y pulsa `enter` · `tab`/`↓` ir a resultados · `/` editar · `b` biblioteca |
 | Manga | `enter` leer · `c` continuar · `f` favorito · `e` estado · `a` sincronizar AniList · `A` re-vincular · `r` recargar · `g`/`G` primero/último |
 | AniList | `l` iniciar sesión · `o` cerrar sesión · `d` registrar la app (solo si falta el client ID) |
 | Lector | `→` `espacio` `l` siguiente · `←` `h` anterior · `n`/`p` capítulo siguiente/anterior · `g`/`G` primera/última página |
@@ -154,19 +154,19 @@ En todas las listas funcionan `↑`/`↓` y `k`/`j`; `esc` o `q` vuelve atrás; 
 | `HANTHO_ANILIST_CLIENT_ID` | Client ID de AniList propio (solo si tu binario no trae uno) |
 | `JAVA_HOME` | JVM a usar (si no, `java` del `PATH`) |
 
-> El proyecto antes se llamaba *mangaterm*. Si tenés datos en `~/.mangaterm`, se mueven solos a
-> `~/.hantho` la primera vez que abrís `hantho`.
+> El proyecto antes se llamaba *mangaterm*. Si tienes datos en `~/.mangaterm`, se mueven solos a
+> `~/.hantho` la primera vez que abras `hantho`.
 
 ## AniList
 
-La sincronización es **manual**: vos decidís cuándo mandar el progreso.
+La sincronización es **manual**: tú decides cuándo enviar el progreso.
 
-1. **Iniciá sesión.** En la TUI andá a *AniList* desde el menú y tocá `l` (o corré
-   `hantho anilist login`). Se abre el navegador, tocás *Approve* y listo: no hay que copiar ni
+1. **Inicia sesión.** En la TUI, ve a *AniList* desde el menú y pulsa `l` (o ejecuta
+   `hantho anilist login`). Se abre el navegador, pulsas *Approve* y ya está: no hay que copiar ni
    pegar nada, ni salir de la TUI. `o` cierra la sesión.
-2. **Sincronizá.** Abrí un manga de tu biblioteca y tocá `a`. La primera vez elegís la obra correcta
+2. **Sincroniza.** Abre un manga de tu biblioteca y pulsa `a`. La primera vez eliges la obra correcta
    en AniList; después se envían el estado y los capítulos leídos. `A` vuelve a elegir la obra. Si
-   todavía no iniciaste sesión, `a` te lleva a la pantalla de AniList.
+   todavía no has iniciado sesión, `a` te lleva a la pantalla de AniList.
 
 El progreso **nunca retrocede**: si AniList tiene más capítulos marcados que Han Thỏ, se conserva
 el de AniList. El token queda en `~/.hantho/anilist.json` (permisos `600` en Linux) y no sale de
@@ -178,7 +178,7 @@ tu máquina más que hacia AniList.
 Es el *implicit grant* de OAuth de AniList. Durante el login, Han Thỏ escucha en
 `http://localhost:47913/callback`, **solo en loopback**. AniList redirige ahí con el token en el
 fragmento de la URL (`#access_token=…`), que nunca viaja por la red: la página lo lee, se lo pasa al
-servidor local y lo borra del historial del navegador. El servidor se cierra apenas recibe el token,
+servidor local y lo borra del historial del navegador. El servidor se cierra en cuanto recibe el token,
 o a los 5 minutos.
 
 </details>
@@ -188,17 +188,17 @@ o a los 5 minutos.
 
 AniList exige que la app esté registrada. Los binarios del proyecto traen su client ID embebido (en
 este flujo no hay secreto, así que el ID es público), y el usuario final no registra nada. Si
-compilás un fork sin ID, la pantalla de AniList te guía para hacer el registro una sola vez:
+compilas un fork sin ID, la pantalla de AniList te guía para hacer el registro una sola vez:
 
 1. `d` abre <https://anilist.co/settings/developer> → *Create New Client*.
 2. Name `Han Thỏ`, Redirect URL `http://localhost:47913/callback`.
-3. Pegá el ID en la pantalla y `enter`. Queda guardado para la próxima.
+3. Pega el ID en la pantalla y pulsa `enter`. Se guarda para la próxima vez.
 
 También sirve `hantho anilist login --client-id <ID>` o la variable `HANTHO_ANILIST_CLIENT_ID`.
 
 </details>
 
-**Rate limiting y caché.** Han Thỏ hace como mucho 1 pedido cada 2 s a AniList (con ráfagas de 5),
+**Rate limiting y caché.** Han Thỏ hace como mucho 1 petición cada 2 s a AniList (con ráfagas de 5),
 respeta `Retry-After` y `X-RateLimit-Remaining`, y reintenta con espera ante un 429. Las búsquedas en
 AniList se cachean una semana. Para las fuentes: las búsquedas se cachean 10 minutos y los detalles
 y capítulos 30 minutos (`r` fuerza la recarga).
@@ -230,7 +230,7 @@ flowchart LR
   [`extensions-lib`](https://github.com/keiyoushi/extensions-lib) 1.6 (la publicada son solo stubs),
   más OkHttp, Jsoup, kotlinx-serialization, Injekt y *shims* mínimos de las clases de Android que usan
   (`Context`, `SharedPreferences`, `Uri`, `Base64`, `androidx.preference`…).
-- **Protocolo.** El reader lanza el host como subproceso y le habla con una línea JSON por pedido
+- **Protocolo.** El reader lanza el host como subproceso y le habla con una línea JSON por petición
   (`{"id":1,"op":"ping"}` → `{"id":1,"result":"pong"}`). Las búsquedas a muchas fuentes corren en
   paralelo y van llegando a medida que responden.
 - **Render.** `ratatui-image` detecta el protocolo y el tamaño de celda, pero escala con vecino más
@@ -243,14 +243,14 @@ Más detalles técnicos en [`NOTES.md`](NOTES.md).
 ## Limitaciones conocidas
 
 - **Cloudflare.** Las fuentes protegidas por el desafío de Cloudflare no funcionan: en Android se
-  resuelven con un WebView, y acá no hay. En las pruebas, ~12 de 165 fuentes en español fallaron por esto.
+  resuelven con un WebView, y aquí no hay. En las pruebas, ~12 de 165 fuentes en español fallaron por esto.
 - **Shims de Android incompletos.** Algunas extensiones usan clases que todavía no están
   (`android.webkit.CookieManager`, `android.util.LruCache`, `android.graphics.ColorMatrix`,
   `Uri.Builder`, `Dispatchers.Main`…) y fallan al cargar o al buscar.
 - **Sin pantalla de ajustes de extensiones.** Las preferencias de cada fuente quedan en sus valores
   por defecto.
 - **Sin descargas offline** ni seguimiento automático de capítulos nuevos (por ahora).
-- **macOS** no está probado; debería andar, pero no hay CI.
+- **macOS** no está probado; debería funcionar, pero no hay CI.
 
 ## Aviso legal
 
@@ -258,14 +258,14 @@ Han Thỏ es un **lector**: no aloja, distribuye ni indexa contenido. Todo el ma
 sitios de terceros a través de extensiones mantenidas por la comunidad de
 [Keiyoushi](https://github.com/keiyoushi/extensions), que Han Thỏ descarga desde su repositorio
 público y no modifica. Los autores de Han Thỏ no tienen relación con esos sitios ni con las
-extensiones, y no se hacen responsables por su contenido ni por su legalidad en tu país.
+extensiones, y no se hacen responsables de su contenido ni por su legalidad en tu país.
 
-Respetá los derechos de autor y, cuando puedas, apoyá a los autores leyendo y comprando por canales
-oficiales. Han Thỏ no está afiliado con Mihon, Tachiyomi, Keiyoushi ni AniList.
+Respeta los derechos de autor y, cuando puedas, apoya a los autores leyendo y comprando por canales
+oficiales. Han Thỏ no está afiliado a Mihon, Tachiyomi, Keiyoushi ni AniList.
 
 ## Contribuir
 
-¡Bienvenido! Mirá [`CONTRIBUTING.md`](CONTRIBUTING.md). No se aceptan pedidos de fuentes nuevas acá:
+¡Bienvenido! Echa un vistazo a [`CONTRIBUTING.md`](CONTRIBUTING.md). Aquí no se aceptan peticiones de fuentes nuevas:
 eso va al [repositorio de Keiyoushi](https://github.com/keiyoushi/extensions).
 
 ## Créditos
