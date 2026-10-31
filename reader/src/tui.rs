@@ -70,10 +70,35 @@ struct PageImage {
     proto: Option<StatefulProtocol>,
 }
 
-pub async fn run() -> Result<()> {
+/// Qué abrir al arrancar (`hantho open`): un manga y, opcionalmente, un capítulo.
+#[derive(Debug, Clone)]
+pub struct OpenTarget {
+    pub source_id: String,
+    pub source_name: String,
+    pub lang: String,
+    pub manga_url: String,
+    pub title: String,
+    pub chapter: ChapterTarget,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ChapterTarget {
+    /// Solo la ficha del manga.
+    None,
+    /// Donde se quedó (o el primer capítulo sin leer).
+    Continue,
+    Number(f32),
+    Url(String),
+}
+
+pub async fn run(open: Option<OpenTarget>) -> Result<()> {
     let picker = make_picker();
     let mut terminal = ratatui::init();
-    let result = App::new(picker).run(&mut terminal).await;
+    let mut app = App::new(picker);
+    if let Some(target) = open {
+        app.start_with(target);
+    }
+    let result = app.run(&mut terminal).await;
     ratatui::restore();
     result
 }
@@ -231,6 +256,14 @@ struct App {
     client_input: String,
 
     reads: ReadLog,
+    /// Fecha de modificación de library.json / read.json tal como los conocemos: si cambian
+    /// (otro proceso, p. ej. el servidor MCP), se releen.
+    library_mtime: Option<std::time::SystemTime>,
+    reads_mtime: Option<std::time::SystemTime>,
+    /// Capítulo a abrir en cuanto carguen los detalles (`hantho open --chapter …`).
+    pending_chapter: Option<ChapterTarget>,
+    /// Manga a abrir en cuanto cargue el host.
+    pending_open: Option<OpenTarget>,
     /// Índices (en `details.chapters`) de los capítulos visibles: filtrados y en el orden elegido.
     chapter_view: Vec<usize>,
     chapter_filter: String,
@@ -298,6 +331,10 @@ impl App {
             anilist_login: false,
             client_input: String::new(),
             reads: ReadLog::load(),
+            library_mtime: mtime(&paths::library_file()),
+            reads_mtime: mtime(&paths::read_file()),
+            pending_chapter: None,
+            pending_open: None,
             chapter_view: Vec::new(),
             chapter_filter: String::new(),
             chapters_reversed: false,
@@ -374,6 +411,9 @@ impl App {
                 if self.screen == Screen::AniList && self.tick % 40 == 0 {
                     self.anilist_user = Credentials::load().map(|c| c.user_name);
                 }
+                if self.tick % 40 == 20 {
+                    self.reload_if_changed();
+                }
                 if self.animated() {
                     self.dirty = true;
                 }
@@ -388,6 +428,18 @@ impl App {
                 }
                 self.host = Some(host);
                 self.sources = sources;
+                if let Some(target) = self.pending_open.take() {
+                    match self.sources.iter().find(|s| s.info.id == target.source_id).cloned() {
+                        Some(src) => {
+                            let manga = Manga { url: target.manga_url, title: target.title, ..Default::default() };
+                            self.open_manga(src, manga, false);
+                        }
+                        None => {
+                            self.pending_chapter = None;
+                            self.status = format!("la fuente {} no está instalada", target.source_name);
+                        }
+                    }
+                }
                 if !self.query.is_empty() {
                     self.start_search();
                 }
@@ -412,8 +464,14 @@ impl App {
                         Some(i) => self.select_chapter(i),
                         None => self.chapters_state.select((!self.chapter_view.is_empty()).then_some(0)),
                     }
+                    if let Some(target) = self.pending_chapter.take() {
+                        self.open_chapter_target(&target);
+                    }
                 }
-                Err(e) => self.status = format!("error: {}", search::short_error(&e.to_string())),
+                Err(e) => {
+                    self.pending_chapter = None;
+                    self.status = format!("error: {}", search::short_error(&e.to_string()))
+                }
             },
             Msg::Pages(generation, res) if generation == self.generation => {
                 let Some(r) = self.reader.as_mut() else { return };
@@ -1038,6 +1096,29 @@ impl App {
         if let Err(e) = self.library.save() {
             self.status = format!("no se ha podido guardar la biblioteca: {e}");
         }
+        self.library_mtime = mtime(&paths::library_file());
+    }
+
+    /// Relee biblioteca y leídos si otro proceso (el servidor MCP, otra TUI) los ha cambiado.
+    fn reload_if_changed(&mut self) {
+        let (lib, reads) = (mtime(&paths::library_file()), mtime(&paths::read_file()));
+        let mut changed = false;
+        if lib != self.library_mtime {
+            self.library = Library::load();
+            self.library_mtime = lib;
+            let len = self.library.favorites.len();
+            self.library_state.select(if len == 0 { None } else { Some(self.library_state.selected().unwrap_or(0).min(len - 1)) });
+            changed = true;
+        }
+        if reads != self.reads_mtime {
+            self.reads = ReadLog::load();
+            self.reads_mtime = reads;
+            changed = true;
+        }
+        // En el lector no: redibujar borraría la imagen Sixel
+        if changed && self.screen != Screen::Reader {
+            self.dirty = true;
+        }
     }
 
     fn toggle_favorite(&mut self) {
@@ -1138,10 +1219,73 @@ impl App {
         }
     }
 
+    /// Arranca directamente en un manga (y capítulo): `hantho open`.
+    fn start_with(&mut self, target: OpenTarget) {
+        // Fuente provisional hasta que cargue el host, para poder mostrar la ficha ya
+        let info = crate::model::SourceInfo {
+            id: target.source_id.clone(),
+            name: target.source_name.clone(),
+            lang: target.lang.clone(),
+            base_url: None,
+            supports_latest: false,
+        };
+        let manga = Manga { url: target.manga_url.clone(), title: target.title.clone(), ..Default::default() };
+        self.current = Some((LoadedSource { info }, manga));
+        self.screen = Screen::Manga;
+        self.manga_back = Screen::Library;
+        self.status = format!("abriendo {}…", target.title);
+        self.pending_chapter = (target.chapter != ChapterTarget::None).then(|| target.chapter.clone());
+        self.pending_open = Some(target);
+    }
+
+    /// Abre el capítulo pedido una vez cargada la lista.
+    fn open_chapter_target(&mut self, target: &ChapterTarget) {
+        let Some(d) = self.details.as_ref() else { return };
+        let key = self.current_key().unwrap_or_default();
+        let last = self.current_favorite().and_then(|f| f.last_read.clone());
+        let (index, page) = match target {
+            ChapterTarget::None => return,
+            ChapterTarget::Url(url) => (d.chapters.iter().position(|c| &c.url == url), 0),
+            ChapterTarget::Number(n) => (
+                d.chapters
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, c)| c.chapter_number >= 0.0)
+                    .min_by(|(_, a), (_, b)| (a.chapter_number - n).abs().total_cmp(&(b.chapter_number - n).abs()))
+                    .map(|(i, _)| i),
+                0,
+            ),
+            ChapterTarget::Continue => match last.and_then(|l| d.chapters.iter().position(|c| c.url == l.chapter_url).map(|i| (i, l.page))) {
+                Some((i, page)) => (Some(i), page),
+                // Sin lectura previa: el capítulo sin leer de número más bajo
+                None => (
+                    d.chapters
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, c)| !self.reads.is_read(&key, &c.url))
+                        .min_by(|(_, a), (_, b)| a.chapter_number.total_cmp(&b.chapter_number))
+                        .map(|(i, _)| i),
+                    0,
+                ),
+            },
+        };
+        match index {
+            Some(i) => {
+                self.select_chapter(i);
+                self.open_chapter(i);
+                if let Some(r) = self.reader.as_mut() {
+                    r.page = page;
+                }
+            }
+            None => self.status = "no se ha encontrado ese capítulo".into(),
+        }
+    }
+
     fn save_reads(&mut self) {
         if let Err(e) = self.reads.save() {
             self.status = format!("no se ha podido guardar el registro de leídos: {e}");
         }
+        self.reads_mtime = mtime(&paths::read_file());
     }
 
     /// Envía el progreso a AniList sin preguntar, si el favorito está vinculado y hay sesión.
@@ -2035,6 +2179,10 @@ fn page_cache_path(source: &LoadedSource, chapter: &Chapter, index: usize) -> Pa
     let dir = paths::pages_cache().join(format!("{:016x}", h.finish()));
     let _ = std::fs::create_dir_all(&dir);
     dir.join(format!("{index:04}"))
+}
+
+fn mtime(path: &std::path::Path) -> Option<std::time::SystemTime> {
+    std::fs::metadata(path).and_then(|m| m.modified()).ok()
 }
 
 /// "12" para 12.0, "12.5" para 12.5 (para comparar con lo que escribe el usuario).

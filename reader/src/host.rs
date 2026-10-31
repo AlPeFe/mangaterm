@@ -130,13 +130,21 @@ impl Host {
     /// `refresh` fuerza ir a la fuente (para ver capítulos nuevos).
     pub async fn details(&self, source: &str, manga: &Manga, refresh: bool) -> Result<MangaDetails> {
         let key = format!("{source}|{}", manga.url);
-        if !refresh {
-            if let Some(hit) = cache::get("details", &key, DETAILS_TTL) {
-                return Ok(hit);
+        let cached = if refresh { None } else { cache::get::<MangaDetails>("details", &key, DETAILS_TTL) };
+        let mut details = match cached {
+            Some(hit) => hit,
+            None => {
+                let fresh: MangaDetails = self.call("manga", json!({ "source": source, "manga": manga })).await?;
+                cache::put("details", &key, &fresh);
+                fresh
+            }
+        };
+        // Fuentes que no informan el número: deducirlo del nombre ("Capítulo 104")
+        for c in details.chapters.iter_mut().filter(|c| c.chapter_number < 0.0) {
+            if let Some(n) = crate::model::chapter_number_from_name(&c.name) {
+                c.chapter_number = n;
             }
         }
-        let details: MangaDetails = self.call("manga", json!({ "source": source, "manga": manga })).await?;
-        cache::put("details", &key, &details);
         Ok(details)
     }
 

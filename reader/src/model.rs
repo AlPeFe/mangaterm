@@ -68,3 +68,33 @@ pub struct MangaDetails {
     pub manga: Manga,
     pub chapters: Vec<Chapter>,
 }
+
+/// Muchas fuentes no informan el número de capítulo (-1) pero sí el nombre ("Capítulo 104.5",
+/// "Ch. 12", "Episodio 3"). Como hace Mihon, se deduce del nombre: primero detrás de una
+/// palabra clave y, si no, el primer número suelto.
+pub fn chapter_number_from_name(name: &str) -> Option<f32> {
+    use std::sync::LazyLock;
+    static KEYWORD: LazyLock<regex::Regex> = LazyLock::new(|| {
+        regex::Regex::new(r"(?i)(?:cap[ií]tulo|cap\.?|chapter|chap\.?|ch\.?|episodio|episode|ep\.?|#)\s*(\d+(?:[.,]\d+)?)").unwrap()
+    });
+    static NUMBER: LazyLock<regex::Regex> = LazyLock::new(|| regex::Regex::new(r"(?:^|[^\w.])(\d+(?:[.,]\d+)?)\b").unwrap());
+    let capture = KEYWORD.captures(name).or_else(|| NUMBER.captures(name))?;
+    capture[1].replace(',', ".").parse().ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::chapter_number_from_name as n;
+
+    #[test]
+    fn chapter_numbers_from_names() {
+        assert_eq!(n("Capítulo 104"), Some(104.0));
+        assert_eq!(n("Capítulo 107.50 Hipnosis seria"), Some(107.5));
+        assert_eq!(n("Cap. 12 - El mar"), Some(12.0));
+        assert_eq!(n("Vol.3 Ch.25: Diving"), Some(25.0));
+        assert_eq!(n("Episodio 3"), Some(3.0));
+        assert_eq!(n("#45"), Some(45.0));
+        assert_eq!(n("12,5"), Some(12.5));
+        assert_eq!(n("Oneshot"), None);
+    }
+}

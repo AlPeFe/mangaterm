@@ -6,7 +6,9 @@ mod catalog;
 mod ext;
 mod home;
 mod host;
+mod launch;
 mod library;
+mod mcp;
 mod model;
 mod paths;
 mod reads;
@@ -46,6 +48,30 @@ enum Cmd {
     /// Backups en formato de Mihon (.tachibk)
     #[command(subcommand)]
     Backup(BackupCmd),
+    /// Abre directamente un manga (o un capítulo) de tu biblioteca
+    Open {
+        /// Título de un favorito (o usa --source y --url)
+        query: Option<String>,
+        #[arg(long)]
+        source: Option<String>,
+        #[arg(long)]
+        url: Option<String>,
+        #[arg(long)]
+        title: Option<String>,
+        /// Número de capítulo
+        #[arg(long)]
+        chapter: Option<f32>,
+        #[arg(long)]
+        chapter_url: Option<String>,
+        /// Seguir donde te quedaste
+        #[arg(long = "continue")]
+        cont: bool,
+        /// Abrirlo en un panel al lado (Windows Terminal, tmux, WezTerm, zellij, kitty) en vez de aquí
+        #[arg(long)]
+        side: bool,
+    },
+    /// Servidor MCP por stdio, para usar Han Thỏ desde Claude Code, Codex y otros agentes
+    Mcp,
 }
 
 #[derive(Subcommand)]
@@ -106,11 +132,28 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
     paths::migrate_legacy();
     match cli.cmd {
-        None => tui::run().await,
+        None => tui::run(None).await,
         Some(Cmd::Search { query, lang }) => cli_search(query, lang).await,
         Some(Cmd::Ext(cmd)) => ext_cmd(cmd).await,
         Some(Cmd::Anilist(cmd)) => anilist_cmd(cmd).await,
         Some(Cmd::Backup(cmd)) => backup_cmd(cmd).await,
+        Some(Cmd::Open { query, source, url, title, chapter, chapter_url, cont, side }) => {
+            let target_chapter = match (chapter, chapter_url) {
+                (_, Some(u)) => tui::ChapterTarget::Url(u),
+                (Some(n), None) => tui::ChapterTarget::Number(n),
+                (None, None) if cont => tui::ChapterTarget::Continue,
+                _ => tui::ChapterTarget::None,
+            };
+            let lib = library::Library::load();
+            let target = launch::resolve(&lib, query.as_deref(), source.as_deref(), url.as_deref(), title.as_deref(), target_chapter)?;
+            if side {
+                println!("✿ abierto en {}", launch::launch(&target, launch::Placement::Side)?);
+                Ok(())
+            } else {
+                tui::run(Some(target)).await
+            }
+        }
+        Some(Cmd::Mcp) => mcp::serve().await,
     }
 }
 
