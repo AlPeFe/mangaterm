@@ -43,6 +43,7 @@ que tú añadas), muestra las páginas como imágenes de verdad
 - 🔎 **Búsqueda global** en todas las fuentes instaladas en paralelo (≈165 fuentes en español en ~25 s),
   con resultados agrupados por obra.
 - 📖 **Lector** con imágenes Sixel o Kitty; fallback a bloques de color si la terminal no tiene gráficos.
+  Ajuste a página entera, al ancho (ideal para webtoons), al alto o tamaño original, y zoom hasta el 400 %.
   Precarga de páginas siguientes.
 - 💗 **Biblioteca**: favoritos, estado de lectura (leyendo, en pausa, completado…), "continuar" donde lo dejaste.
 - ✓ **Capítulos leídos**: se marcan solos al terminar un capítulo y se ven apagados en la lista; en mangas
@@ -185,7 +186,7 @@ En todas las listas funcionan `↑`/`↓` y `k`/`j`; `esc` o `q` vuelve atrás; 
 | Capítulos | `m` marcar/desmarcar leído · `M` marcar este y los anteriores · `/` filtrar · `#` ir al capítulo N · `[`/`]` ±100 · `g`/`G` primero/último · `o` invertir orden |
 | Backup Mihon | `enter` exportar o importar el archivo elegido · `r` buscar archivos de nuevo |
 | AniList | `l` iniciar sesión · `o` cerrar sesión · `d` registrar la app (solo si falta el client ID) |
-| Lector | `→` `espacio` `l` siguiente · `←` `h` anterior · `n`/`p` capítulo siguiente/anterior · `g`/`G` primera/última página |
+| Lector | `→` `espacio` `l` siguiente · `←` `h` anterior · `n`/`p` capítulo siguiente/anterior · `g`/`G` primera/última página · `f` ajuste (página, ancho, alto, original; se recuerda por manga) · `+`/`-` zoom · `0` quitar zoom. Si la página no cabe, las flechas (`hjkl`) primero la recorren y al llegar al borde pasan de página |
 
 ### Variables de entorno
 

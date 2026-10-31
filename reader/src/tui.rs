@@ -15,7 +15,7 @@ use crate::library::{AniListLink, LastRead, Library, Status};
 use crate::theme::{self, ERROR, FAINT, LAVENDER, MINT, MUTED, ON_PINK, PEACH, PINK, PINK_DIM, TEXT};
 use crate::model::{Chapter, Manga, MangaDetails, Page};
 use crate::paths;
-use crate::render::{self, Encoded};
+use crate::render::{self, Encoded, Fit, View};
 use crate::search::{self, SearchEvent};
 use anyhow::Result;
 use image::imageops::FilterType;
@@ -51,7 +51,7 @@ enum Msg {
     Details(u64, Result<MangaDetails>),
     Pages(u64, Result<Vec<Page>>),
     Image(u64, usize, Result<DynamicImage>),
-    Encoded(u64, usize, (u16, u16), Encoded),
+    Encoded(u64, usize, EncodeKey, Encoded),
     AnilistMatches(Result<Vec<Media>>),
     /// (fuente, url del manga, resultado)
     AnilistSynced(String, String, Result<SyncResult>),
@@ -71,9 +71,52 @@ enum Msg {
 /// tamaño de área actual; en los demás protocolos la dibuja ratatui-image.
 struct PageImage {
     img: Arc<DynamicImage>,
-    encoded: Option<((u16, u16), Encoded)>,
-    encoding: Option<(u16, u16)>,
-    proto: Option<StatefulProtocol>,
+    encoded: Option<(EncodeKey, Encoded)>,
+    encoding: Option<EncodeKey>,
+    /// Otros protocolos: la parte visible ya recortada (para esa vista) y cuánto sobresale.
+    proto: Option<(EncodeKey, StatefulProtocol, (u32, u32))>,
+}
+
+/// Para qué tamaño de área (en celdas) y qué vista está preparada una página.
+type EncodeKey = ((u16, u16), View);
+
+impl PageImage {
+    /// Cuánto sobresale la página del área con la vista que se está mostrando (en píxeles).
+    fn overflow(&self) -> (u32, u32) {
+        match (&self.encoded, &self.proto) {
+            (Some((_, enc)), _) => enc.overflow,
+            (None, Some((_, _, overflow))) => *overflow,
+            _ => (0, 0),
+        }
+    }
+}
+
+/// Ajuste preferido del lector: el último elegido y el de cada manga (`~/.hantho/reader.json`).
+#[derive(Default, serde::Serialize, serde::Deserialize)]
+struct ReaderPrefs {
+    #[serde(default)]
+    fit: Fit,
+    #[serde(default)]
+    manga: HashMap<String, Fit>,
+}
+
+impl ReaderPrefs {
+    fn load() -> Self {
+        std::fs::read(paths::reader_file()).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default()
+    }
+
+    fn fit_for(&self, key: &str) -> Fit {
+        self.manga.get(key).copied().unwrap_or(self.fit)
+    }
+
+    fn set(&mut self, key: String, fit: Fit) {
+        self.fit = fit;
+        self.manga.insert(key, fit);
+        if let Ok(json) = serde_json::to_vec_pretty(self) {
+            let _ = std::fs::create_dir_all(paths::home());
+            let _ = std::fs::write(paths::reader_file(), json);
+        }
+    }
 }
 
 /// Qué abrir al arrancar (`hantho open`): un manga y, opcionalmente, un capítulo.
@@ -173,6 +216,12 @@ struct Group {
     entries: Vec<(LoadedSource, Manga)>,
 }
 
+#[derive(Clone, Copy)]
+enum Axis {
+    X,
+    Y,
+}
+
 struct Reader {
     source: LoadedSource,
     manga: Manga,
@@ -185,9 +234,25 @@ struct Reader {
     requested: HashSet<usize>,
     images: HashMap<usize, PageImage>,
     error: Option<String>,
+    /// Ajuste, zoom y posición dentro de la página actual.
+    view: View,
 }
 
 impl Reader {
+    /// Vista con la que preparar cada página: la actual tal cual, las demás desde el principio.
+    fn view_for(&self, index: usize) -> View {
+        if index == self.page {
+            self.view
+        } else {
+            self.view.at_start()
+        }
+    }
+
+    /// Clave para guardar el ajuste preferido de este manga.
+    fn prefs_key(&self) -> String {
+        reads::key(&self.source.info.id, &self.manga_url)
+    }
+
     /// Las extensiones suelen listar del capítulo más nuevo al más viejo.
     fn descending(&self) -> bool {
         let first = self.chapters.first().map(|c| c.chapter_number).unwrap_or(0.0);
@@ -219,7 +284,8 @@ struct App {
     /// Área (en celdas) donde va la imagen del lector, medida en el último dibujo.
     reader_area: Rect,
     /// Qué página y en qué posición está pintada ya en pantalla (Sixel se escribe aparte de ratatui).
-    sixel_drawn: Option<(usize, Rect)>,
+    sixel_drawn: Option<(usize, Rect, View)>,
+    reader_prefs: ReaderPrefs,
     tx: mpsc::UnboundedSender<Msg>,
     rx: mpsc::UnboundedReceiver<Msg>,
     host: Option<Arc<Host>>,
@@ -349,6 +415,7 @@ impl App {
             font: (font.width, font.height),
             reader_area: Rect::default(),
             sixel_drawn: None,
+            reader_prefs: ReaderPrefs::load(),
             picker,
             tx,
             rx,
@@ -544,8 +611,7 @@ impl App {
                 match res {
                     Ok(img) => {
                         let img = Arc::new(img);
-                        let proto = (!self.sixel).then(|| self.picker.new_resize_protocol((*img).clone()));
-                        r.images.insert(index, PageImage { img, encoded: None, encoding: None, proto });
+                        r.images.insert(index, PageImage { img, encoded: None, encoding: None, proto: None });
                         if index == r.page {
                             self.clear = true;
                         }
@@ -557,12 +623,12 @@ impl App {
                     }
                 }
             }
-            Msg::Encoded(generation, index, size, enc) if generation == self.generation => {
+            Msg::Encoded(generation, index, key, enc) if generation == self.generation => {
                 let Some(page) = self.reader.as_mut().and_then(|r| r.images.get_mut(&index)) else { return };
-                if page.encoding == Some(size) {
+                if page.encoding == Some(key) {
                     page.encoding = None;
                 }
-                page.encoded = Some((size, enc));
+                page.encoded = Some((key, enc));
             }
             Msg::Details(..) | Msg::Pages(..) | Msg::Image(..) | Msg::Encoded(..) => {}
             Msg::AnilistMatches(res) if self.screen == Screen::AnilistPick => match res {
@@ -1186,19 +1252,26 @@ impl App {
                 self.screen = Screen::Manga;
                 self.clear = true;
             }
-            KeyCode::Right | KeyCode::Char('l') | KeyCode::Char(' ') | KeyCode::PageDown | KeyCode::Char('j') => {
-                if r.page + 1 < r.pages.len() {
-                    r.page += 1;
-                    self.page_changed();
-                } else if let Some(next) = r.next_chapter() {
-                    self.open_chapter(next);
-                }
+            // Con zoom o ajuste al ancho, las flechas primero recorren la página y al llegar al
+            // borde pasan de página (como un webtoon)
+            KeyCode::Down | KeyCode::Char('j') => self.scroll_or_turn(Axis::Y, 0.35, true),
+            KeyCode::Up | KeyCode::Char('k') => self.scroll_or_turn(Axis::Y, 0.35, false),
+            KeyCode::Char(' ') | KeyCode::PageDown => self.scroll_or_turn(Axis::Y, 0.9, true),
+            KeyCode::PageUp => self.scroll_or_turn(Axis::Y, 0.9, false),
+            KeyCode::Right | KeyCode::Char('l') => self.scroll_or_turn(Axis::X, 0.5, true),
+            KeyCode::Left | KeyCode::Char('h') => self.scroll_or_turn(Axis::X, 0.5, false),
+            KeyCode::Char('f') => {
+                let fit = r.view.fit.next();
+                r.view = View { fit, ..View::default() };
+                let key = r.prefs_key();
+                self.reader_prefs.set(key, fit);
+                self.view_changed();
             }
-            KeyCode::Left | KeyCode::Char('h') | KeyCode::PageUp | KeyCode::Char('k') => {
-                if r.page > 0 {
-                    r.page -= 1;
-                    self.page_changed();
-                }
+            KeyCode::Char('+') | KeyCode::Char('=') => self.zoom(1),
+            KeyCode::Char('-') => self.zoom(-1),
+            KeyCode::Char('0') => {
+                r.view = View { fit: r.view.fit, ..View::default() };
+                self.view_changed();
             }
             KeyCode::Char('n') => {
                 if let Some(next) = r.next_chapter() {
@@ -1219,6 +1292,57 @@ impl App {
                 self.page_changed();
             }
             _ => {}
+        }
+    }
+
+    /// Desplaza la vista una fracción del área en `axis`; si ya está en el borde, cambia de página.
+    fn scroll_or_turn(&mut self, axis: Axis, fraction: f32, forward: bool) {
+        let area = (self.reader_area.width as u32 * self.font.0 as u32, self.reader_area.height as u32 * self.font.1 as u32);
+        let Some(r) = self.reader.as_mut() else { return };
+        let overflow = r.images.get(&r.page).map(|p| p.overflow()).unwrap_or_default();
+        let (over, visible, pos) = match axis {
+            Axis::X => (overflow.0, area.0, &mut r.view.x),
+            Axis::Y => (overflow.1, area.1, &mut r.view.y),
+        };
+        let at_edge = if forward { *pos >= 1000 } else { *pos == 0 };
+        if over > 0 && !at_edge {
+            let step = ((visible as f32 * fraction / over as f32 * 1000.0) as u16).max(1);
+            *pos = if forward { pos.saturating_add(step).min(1000) } else { pos.saturating_sub(step) };
+            self.view_changed();
+        } else if forward {
+            if r.page + 1 < r.pages.len() {
+                r.page += 1;
+                self.page_changed();
+            } else if let Some(next) = r.next_chapter() {
+                self.open_chapter(next);
+            }
+        } else if r.page > 0 {
+            r.page -= 1;
+            self.page_changed();
+            // Subiendo se llega al final de la página anterior
+            if let (Axis::Y, Some(r)) = (axis, self.reader.as_mut()) {
+                r.view.y = 1000;
+                self.view_changed();
+            }
+        }
+    }
+
+    fn zoom(&mut self, delta: i32) {
+        let Some(r) = self.reader.as_mut() else { return };
+        let i = render::ZOOMS.iter().position(|&z| z >= r.view.zoom).unwrap_or(0) as i32;
+        let zoom = render::ZOOMS[(i + delta).clamp(0, render::ZOOMS.len() as i32 - 1) as usize];
+        if zoom != r.view.zoom {
+            r.view.zoom = zoom;
+            self.view_changed();
+        }
+    }
+
+    /// Cambió la vista: preparar de nuevo las páginas descargadas.
+    fn view_changed(&mut self) {
+        self.dirty = true;
+        let loaded: Vec<usize> = self.reader.as_ref().map(|r| r.images.keys().copied().collect()).unwrap_or_default();
+        for index in loaded {
+            self.request_encode(index);
         }
     }
 
@@ -1716,6 +1840,7 @@ impl App {
         self.generation += 1;
         let generation = self.generation;
         let chapter = details.chapters[index].clone();
+        let fit = self.reader_prefs.fit_for(&reads::key(&source.info.id, &manga.url));
         self.reader = Some(Reader {
             source: source.clone(),
             manga_url: manga.url.clone(),
@@ -1727,6 +1852,7 @@ impl App {
             requested: HashSet::new(),
             images: HashMap::new(),
             error: None,
+            view: View { fit, ..View::default() },
         });
         self.screen = Screen::Reader;
         self.clear = true;
@@ -1743,6 +1869,7 @@ impl App {
         self.clear = true;
         if let Some(r) = self.reader.as_mut() {
             r.error = None;
+            r.view = r.view.at_start();
             let page = r.page;
             r.images.retain(|&i, _| i.abs_diff(page) <= KEEP_AROUND);
             r.requested.retain(|&i| i.abs_diff(page) <= KEEP_AROUND);
@@ -1786,15 +1913,16 @@ impl App {
     fn request_encode(&mut self, index: usize) {
         let size = (self.reader_area.width, self.reader_area.height);
         let (true, Some(r)) = (self.sixel && size.0 > 0 && size.1 > 0, self.reader.as_mut()) else { return };
+        let key = (size, r.view_for(index));
         let Some(page) = r.images.get_mut(&index) else { return };
-        if page.encoding == Some(size) || page.encoded.as_ref().is_some_and(|(s, _)| *s == size) {
+        if page.encoding == Some(key) || page.encoded.as_ref().is_some_and(|(k, _)| *k == key) {
             return;
         }
-        page.encoding = Some(size);
+        page.encoding = Some(key);
         let (img, font, tx, generation) = (page.img.clone(), self.font, self.tx.clone(), self.generation);
         tokio::task::spawn_blocking(move || {
-            let enc = render::encode(&img, size.0, size.1, font);
-            let _ = tx.send(Msg::Encoded(generation, index, size, enc));
+            let enc = render::encode(&img, size.0, size.1, font, key.1);
+            let _ = tx.send(Msg::Encoded(generation, index, key, enc));
         });
     }
 
@@ -1809,19 +1937,29 @@ impl App {
         let area = self.reader_area;
         let size = (area.width, area.height);
         let Some(r) = self.reader.as_ref() else { return Ok(()) };
-        let Some((_, enc)) = r.images.get(&r.page).and_then(|p| p.encoded.as_ref()).filter(|(s, _)| *s == size) else {
+        // Mientras se prepara otra vista se deja la anterior (sin parpadeo al desplazarse)
+        let Some(((_, view), enc)) = r.images.get(&r.page).and_then(|p| p.encoded.as_ref()).filter(|((s, _), _)| *s == size) else {
             return Ok(());
         };
         let x = area.x + area.width.saturating_sub(enc.cols) / 2;
-        let target = Rect::new(x, area.y, enc.cols, enc.rows);
-        if self.sixel_drawn == Some((r.page, target)) {
+        let y = area.y + area.height.saturating_sub(enc.rows) / 2;
+        let target = Rect::new(x, y, enc.cols, enc.rows);
+        if self.sixel_drawn == Some((r.page, target, *view)) {
             return Ok(());
         }
         let mut out = std::io::stdout().lock();
+        // Si la imagen nueva ocupa otro rectángulo, borrar lo que quede de la anterior
+        if let Some((_, old, _)) = self.sixel_drawn.filter(|(_, old, _)| *old != target) {
+            let blank = " ".repeat(old.width as usize);
+            for row in old.y..old.y + old.height {
+                queue!(out, MoveTo(old.x, row))?;
+                out.write_all(blank.as_bytes())?;
+            }
+        }
         queue!(out, MoveTo(target.x, target.y))?;
         out.write_all(enc.sixel.as_bytes())?;
         out.flush()?;
-        self.sixel_drawn = Some((r.page, target));
+        self.sixel_drawn = Some((r.page, target, *view));
         Ok(())
     }
 
@@ -2449,9 +2587,16 @@ impl App {
         let chapter = &r.chapters[r.chapter];
         let progress = if r.pages.is_empty() { "…".to_string() } else { format!("{}/{}", r.page + 1, r.pages.len()) };
         let mut info = format!("{} · {} · {}", r.manga.title, chapter.name, progress);
+        if r.view.fit != Fit::Page {
+            info += &format!(" · {}", r.view.fit.label());
+        }
+        if r.view.zoom != 100 {
+            info += &format!(" · {}%", r.view.zoom);
+        }
 
+        let view = r.view;
         let page = r.images.get_mut(&r.page);
-        let ready = page.as_ref().is_some_and(|p| !sixel || p.encoded.as_ref().is_some_and(|(s, _)| *s == size));
+        let ready = page.as_ref().is_some_and(|p| !sixel || p.encoded.as_ref().is_some_and(|((s, _), _)| *s == size));
         if let Some(err) = &r.error {
             f.render_widget(Paragraph::new(format!("✕ {err}")).fg(ERROR).wrap(Wrap { trim: true }).centered(), image_area);
         } else if let (true, Some(page)) = (ready, page) {
@@ -2459,12 +2604,20 @@ impl App {
                 // La imagen la escribe flush_sixel() después del frame; aquí solo la info
                 let kind = if enc.gray { tr!("gris", "gray") } else { "color" };
                 info += &trf!("  · sixel {kind} {}×{} · celda {}×{}", "  · sixel {kind} {}×{} · cell {}×{}", enc.out.0, enc.out.1, font.0, font.1);
-            } else if let Some(proto) = page.proto.as_mut() {
+            } else {
+                // Otros protocolos: recortar la parte visible aquí y que ratatui-image la pinte
+                let key = (size, view);
+                if page.proto.as_ref().is_none_or(|(k, _, _)| *k != key) {
+                    let framed = render::frame(&page.img, size.0 as u32 * font.0 as u32, size.1 as u32 * font.1 as u32, view);
+                    page.proto = Some((key, self.picker.new_resize_protocol(framed.img), framed.overflow));
+                }
+                let (_, proto, _) = page.proto.as_mut().unwrap();
                 let resize = ratatui_image::Resize::Fit(Some(FilterType::Lanczos3));
-                // Centrar horizontalmente: la imagen se ajusta al alto y suele sobrar ancho
+                // Centrar: la imagen se ajusta a un lado y suele sobrar el otro
                 let fit = proto.size_for(resize.clone(), image_area.as_size());
                 let x = image_area.x + image_area.width.saturating_sub(fit.width) / 2;
-                let area = Rect::new(x, image_area.y, fit.width.min(image_area.width), image_area.height);
+                let y = image_area.y + image_area.height.saturating_sub(fit.height) / 2;
+                let area = Rect::new(x, y, fit.width.min(image_area.width), fit.height.min(image_area.height));
                 f.render_stateful_widget(StatefulImage::<StatefulProtocol>::default().resize(resize), area, proto);
                 info += &format!("  · {:?}", self.picker.protocol_type());
             }
@@ -2476,7 +2629,7 @@ impl App {
                 center,
             );
         }
-        theme::status_bar(f, status_area, tr!("LEYENDO", "READING"), &info, &[("←→", tr!("página", "page")), ("n/p", tr!("capítulo", "chapter")), ("esc", tr!("volver", "back"))]);
+        theme::status_bar(f, status_area, tr!("LEYENDO", "READING"), &info, &[("←→", tr!("página", "page")), ("n/p", tr!("capítulo", "chapter")), ("f", tr!("ajuste", "fit")), ("+/-", "zoom"), ("esc", tr!("volver", "back"))]);
     }
 }
 
@@ -2822,10 +2975,10 @@ mod tests {
             app.sixel = true;
             app.font = (10, 20);
             app.reader_area = Rect::new(0, 0, width, 29);
-            let encoded = render::encode(&img, width, 29, app.font);
+            let encoded = render::encode(&img, width, 29, app.font, View::default());
             let pages: Vec<Page> = (0..18).map(|i| Page { index: i, url: String::new(), image_url: None }).collect();
             let mut images = HashMap::new();
-            images.insert(6, PageImage { img: img.clone(), encoded: Some(((width, 29), encoded)), encoding: None, proto: None });
+            images.insert(6, PageImage { img: img.clone(), encoded: Some((((width, 29), View::default()), encoded)), encoding: None, proto: None });
             app.reader = Some(Reader {
                 source: app.sources[0].clone(),
                 manga: details.manga.clone(),
@@ -2837,6 +2990,7 @@ mod tests {
                 requested: HashSet::new(),
                 images,
                 error: None,
+                view: View::default(),
             });
             app.screen = Screen::Reader;
             terminal.draw(|f| app.draw(f)).unwrap();
@@ -2987,13 +3141,14 @@ mod tests {
             requested: HashSet::new(),
             images: HashMap::new(),
             error: None,
+            view: View::default(),
         });
         app.screen = Screen::Reader;
         let ensure_page = |app: &mut App| {
             let r = app.reader.as_mut().unwrap();
             let img = page_imgs[r.page % page_imgs.len()].clone();
-            let encoded = render::encode(&img, 120, 29, (10, 20));
-            r.images.insert(r.page, PageImage { img, encoded: Some(((120, 29), encoded)), encoding: None, proto: None });
+            let encoded = render::encode(&img, 120, 29, (10, 20), View::default());
+            r.images.insert(r.page, PageImage { img, encoded: Some((((120, 29), View::default()), encoded)), encoding: None, proto: None });
         };
         for page in 0..total {
             ensure_page(&mut app);

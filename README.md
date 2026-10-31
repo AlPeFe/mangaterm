@@ -43,6 +43,7 @@ progress to [AniList](https://anilist.co).
 - 🔎 **Global search** across every installed source in parallel (≈165 Spanish sources in ~25 s),
   with results grouped by title.
 - 📖 **Reader** with Sixel or Kitty images; falls back to colored blocks if the terminal has no graphics.
+  Fit the whole page, the width (great for webtoons), the height or the original size, and zoom up to 400%.
   Upcoming pages are preloaded.
 - 💗 **Library**: favorites, reading status (reading, paused, completed…), "continue" where you left off.
 - ✓ **Read chapters**: marked automatically when you finish a chapter and dimmed in the list; for manga
@@ -185,7 +186,7 @@ Every list supports `↑`/`↓` and `k`/`j`; `esc` or `q` goes back; `ctrl+c` qu
 | Chapters | `m` mark/unmark read · `M` mark this one and all before · `/` filter · `#` go to chapter N · `[`/`]` ±100 · `g`/`G` first/last · `o` reverse order |
 | Mihon backup | `enter` export, or import the selected file · `r` look for files again |
 | AniList | `l` log in · `o` log out · `d` register the app (only if the client ID is missing) |
-| Reader | `→` `space` `l` next · `←` `h` previous · `n`/`p` next/previous chapter · `g`/`G` first/last page |
+| Reader | `→` `space` `l` next · `←` `h` previous · `n`/`p` next/previous chapter · `g`/`G` first/last page · `f` fit (page, width, height, original; remembered per manga) · `+`/`-` zoom · `0` reset zoom. When the page doesn't fit, the arrows (`hjkl`) scroll it first and turn the page at the edge |
 
 ### Environment variables
 

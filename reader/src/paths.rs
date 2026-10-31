@@ -72,3 +72,8 @@ pub fn anilist_client_file() -> PathBuf {
 pub fn http_cache() -> PathBuf {
     home().join("cache").join("api")
 }
+
+/// Ajuste preferido del lector (general y por manga).
+pub fn reader_file() -> PathBuf {
+    home().join("reader.json")
+}
