@@ -56,6 +56,8 @@ enum Msg {
     /// (fuente, url del manga, resultado)
     AnilistSynced(String, String, Result<SyncResult>),
     AnilistLogin(Result<Credentials>),
+    /// Resultado de buscar en AniList un favorito recién añadido: (fuente, url, título, candidatas)
+    AutoLink(String, String, String, Result<Vec<Media>>),
     BackupRead(Result<(Backup, Vec<catalog::Extension>)>),
     /// Extensiones instaladas y cargadas tras importar un backup (y los errores, por nombre).
     BackupExtensions(Vec<Installed>, Vec<LoadedSource>, Vec<String>),
@@ -541,6 +543,7 @@ impl App {
                 }
                 self.status = "importación terminada ✿".into();
             }
+            Msg::AutoLink(source_id, url, title, res) => self.on_auto_link(&source_id, &url, &title, res),
             Msg::AnilistLogin(res) => {
                 self.anilist_login = false;
                 match res {
@@ -1134,7 +1137,26 @@ impl App {
         self.status = if added { "★ añadido a favoritos".into() } else { "quitado de favoritos".into() };
         if added {
             self.library_state.select(Some(self.library.favorites.len() - 1));
+            // Vincular con AniList si el título coincide exactamente (en segundo plano)
+            let (tx, source_id, url, title) = (self.tx.clone(), src.info.id.clone(), full.url.clone(), full.title.clone());
+            tokio::spawn(async move {
+                let res = anilist::search(&title).await;
+                let _ = tx.send(Msg::AutoLink(source_id, url, title, res));
+            });
         }
+    }
+
+    fn on_auto_link(&mut self, source_id: &str, url: &str, title: &str, res: Result<Vec<Media>>) {
+        let Ok(candidates) = res else { return };
+        let Some(media) = anilist::best_match(title, &candidates) else {
+            self.status = "★ añadido a favoritos · para vincularlo con AniList pulsa 'a'".into();
+            return;
+        };
+        let Some(fav) = self.library.get_mut(source_id, url).filter(|f| f.anilist.is_none()) else { return };
+        fav.anilist = Some(AniListLink { media_id: media.id, title: media.display_title(), synced_progress: None, synced_status: None, synced_at: None });
+        self.status = format!("★ añadido a favoritos y vinculado con «{}» en AniList", media.display_title());
+        self.save_library();
+        self.auto_sync(source_id, url);
     }
 
     /// Sincroniza el favorito actual con AniList. La primera vez (o con `relink`) pide elegir la obra.

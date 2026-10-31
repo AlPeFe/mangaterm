@@ -32,7 +32,13 @@ pub fn put<T: Serialize>(namespace: &str, key: &str, value: &T) {
     let entry = Entry { saved_at: crate::library::now(), value };
     if let (Some(dir), Ok(bytes)) = (path.parent(), serde_json::to_vec(&entry)) {
         let _ = std::fs::create_dir_all(dir);
-        let _ = std::fs::write(path, bytes);
+        // Temporal único + rename: otro proceso (TUI, MCP) nunca lee un archivo a medio escribir
+        static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let n = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let tmp = path.with_extension(format!("{}-{n}.tmp", std::process::id()));
+        if std::fs::write(&tmp, bytes).is_ok() && std::fs::rename(&tmp, &path).is_err() {
+            let _ = std::fs::remove_file(&tmp);
+        }
     }
 }
 

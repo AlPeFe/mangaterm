@@ -12,8 +12,9 @@ tu biblioteca, marcar capítulos y **abrir el lector en un panel al lado del cha
 | `library` | Tus favoritos con estado, progreso, último capítulo y vínculo con AniList |
 | `chapters` | Capítulos de un manga, con cuáles están leídos (`from`, `to`, `unread_only`, `limit`) |
 | `mark_read` | Marca o desmarca un capítulo, o todos hasta un número; actualiza AniList si está vinculado |
-| `set_favorite` | Añade o quita un manga de favoritos |
+| `set_favorite` | Añade o quita un manga de favoritos; al añadirlo lo vincula con AniList si el título coincide exactamente |
 | `open_reader` | Abre el lector en un panel lateral (o en una ventana nueva), por defecto donde te quedaste |
+| `link_anilist` | Vincula un favorito con su obra de AniList y sincroniza; si hay dudas devuelve candidatas para elegir |
 | `sync_anilist` | Envía a AniList el estado y el progreso de un favorito vinculado |
 
 Ejemplos de lo que puedes pedirle al agente:
@@ -22,6 +23,11 @@ Ejemplos de lo que puedes pedirle al agente:
 - «¿En qué capítulo voy de cada manga de mi biblioteca?»
 - «Busca *Dungeon Meshi* en fuentes en español y añádelo a favoritos»
 - «Marca como leídos los capítulos de Grand Blue hasta el 60»
+- «Vincula Grand Blue con mi AniList»
+
+> Tener la cuenta de AniList conectada no basta: cada manga se vincula una vez con su obra de
+> AniList (el mismo título puede tener manga, novela y spin-offs). Al añadir un favorito se vincula
+> solo si el título coincide exactamente; si no, `link_anilist` (o la tecla `a` en la TUI).
 
 ## Panel lateral
 

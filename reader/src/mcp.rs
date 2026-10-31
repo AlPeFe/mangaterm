@@ -104,7 +104,8 @@ impl Server {
             "library" => library(),
             "chapters" => self.chapters(args).await,
             "mark_read" => self.mark_read(args).await,
-            "set_favorite" => set_favorite(args),
+            "set_favorite" => set_favorite(args).await,
+            "link_anilist" => link_anilist(args).await,
             "open_reader" => open_reader(args),
             "sync_anilist" => sync_anilist(args).await,
             _ => bail!("herramienta desconocida: {name}"),
@@ -258,7 +259,7 @@ fn library() -> Result<String> {
     Ok(pretty(&json!({ "favorites": items, "anilist_user": Credentials::load().map(|c| c.user_name) })))
 }
 
-fn set_favorite(args: &Value) -> Result<String> {
+async fn set_favorite(args: &Value) -> Result<String> {
     let (source_id, manga_url) = (str_arg(args, "source_id")?, str_arg(args, "manga_url")?);
     let favorite = args["favorite"].as_bool().unwrap_or(true);
     let mut lib = Library::load();
@@ -271,7 +272,93 @@ fn set_favorite(args: &Value) -> Result<String> {
     let lang = args["lang"].as_str().unwrap_or("");
     lib.toggle(source_id, source_name, lang, &manga);
     lib.save()?;
-    Ok(if favorite { format!("★ «{}» añadido a favoritos", manga.title) } else { "quitado de favoritos".into() })
+    if !favorite {
+        return Ok("quitado de favoritos".into());
+    }
+    // Vincular con AniList si hay una coincidencia exacta del título
+    let linked = match anilist::search(&manga.title).await {
+        Ok(candidates) => match anilist::best_match(&manga.title, &candidates) {
+            Some(media) => link_and_sync(source_id, manga_url, media.id, &media.display_title()).await?,
+            None => "no se ha vinculado con AniList automáticamente (sin coincidencia exacta; usa link_anilist)".into(),
+        },
+        Err(e) => format!("no se ha podido consultar AniList: {e}"),
+    };
+    Ok(format!("★ «{}» añadido a favoritos. {linked}", manga.title))
+}
+
+/// Vincula un favorito con una obra de AniList y, si hay sesión, envía el progreso.
+async fn link_and_sync(source_id: &str, manga_url: &str, media_id: i64, title: &str) -> Result<String> {
+    let mut lib = Library::load();
+    let fav = lib.get_mut(source_id, manga_url).ok_or_else(|| anyhow!("ese manga no está en favoritos"))?;
+    fav.anilist = Some(crate::library::AniListLink { media_id, title: title.to_string(), synced_progress: None, synced_status: None, synced_at: None });
+    let (status, progress) = (fav.status, fav.progress);
+    lib.save()?;
+    let Some(creds) = Credentials::load() else {
+        return Ok(format!("vinculado con «{title}» en AniList (sin sesión: se sincronizará al conectar la cuenta)"));
+    };
+    match anilist::sync(&creds, media_id, status.as_anilist(), progress).await {
+        Ok(r) => {
+            let remote = r.entry.progress.unwrap_or(progress);
+            let mut lib = Library::load();
+            if let Some(fav) = lib.get_mut(source_id, manga_url) {
+                fav.progress = fav.progress.max(remote);
+                if let Some(a) = fav.anilist.as_mut() {
+                    a.synced_progress = Some(fav.progress);
+                    a.synced_status = Some(status);
+                    a.synced_at = Some(crate::library::now());
+                }
+                lib.save()?;
+            }
+            Ok(format!("vinculado con «{title}» en AniList y sincronizado (capítulo {remote})"))
+        }
+        Err(e) => Ok(format!("vinculado con «{title}» en AniList, pero no se ha podido sincronizar: {e}")),
+    }
+}
+
+async fn link_anilist(args: &Value) -> Result<String> {
+    let (source_id, manga_url) = (str_arg(args, "source_id")?, str_arg(args, "manga_url")?);
+    let lib = Library::load();
+    let fav = lib
+        .favorites
+        .iter()
+        .find(|f| f.is(source_id, manga_url))
+        .ok_or_else(|| anyhow!("ese manga no está en favoritos: añádelo primero con set_favorite"))?;
+    let query = args["query"].as_str().unwrap_or(&fav.manga.title).to_string();
+    let candidates = anilist::search(&query).await?;
+
+    if let Some(id) = args["media_id"].as_i64() {
+        let title = match candidates.iter().find(|m| m.id == id) {
+            Some(m) => m.display_title(),
+            None => anilist::media(id).await.map_err(|e| anyhow!("AniList no tiene ningún manga con id {id}: {e}"))?.display_title(),
+        };
+        return link_and_sync(source_id, manga_url, id, &title).await;
+    }
+    if let Some(media) = anilist::best_match(&fav.manga.title, &candidates) {
+        return link_and_sync(source_id, manga_url, media.id, &media.display_title()).await;
+    }
+    // Sin coincidencia segura: devolver candidatas para que el usuario elija
+    let list: Vec<Value> = candidates
+        .iter()
+        .take(8)
+        .map(|m| {
+            json!({
+                "media_id": m.id,
+                "title": m.display_title(),
+                "english": m.title.english,
+                "format": m.format,
+                "year": m.start_date.as_ref().and_then(|d| d.year),
+                "chapters": m.chapters,
+            })
+        })
+        .collect();
+    if list.is_empty() {
+        bail!("AniList no ha encontrado «{query}»; prueba con otro título en query");
+    }
+    Ok(format!(
+        "No hay una coincidencia exacta para «{}». Pregunta al usuario cuál es y vuelve a llamar a link_anilist con media_id:\n{}",
+        fav.manga.title,
+        pretty(&json!(list))
+    ))
 }
 
 fn open_reader(args: &Value) -> Result<String> {
@@ -296,7 +383,7 @@ async fn sync_anilist(args: &Value) -> Result<String> {
     let creds = Credentials::load().ok_or_else(|| anyhow!("no hay sesión de AniList: conéctala desde la TUI (menú AniList, tecla l)"))?;
     let lib = Library::load();
     let fav = lib.favorites.iter().find(|f| f.is(source_id, manga_url)).ok_or_else(|| anyhow!("ese manga no está en favoritos"))?;
-    let link = fav.anilist.clone().ok_or_else(|| anyhow!("ese favorito no está vinculado a AniList: vincúlalo desde la TUI (tecla a)"))?;
+    let link = fav.anilist.clone().ok_or_else(|| anyhow!("ese favorito no está vinculado a AniList: vincúlalo con link_anilist"))?;
     let r = anilist::sync(&creds, link.media_id, fav.status.as_anilist(), fav.progress).await?;
     Ok(format!("AniList: {} · capítulo {}", r.entry.status.unwrap_or_default(), r.entry.progress.unwrap_or(0)))
 }
@@ -370,7 +457,7 @@ fn tools() -> Value {
         {
             "name": "set_favorite",
             "title": "Favorito",
-            "description": "Añade o quita un manga de los favoritos del usuario.",
+            "description": "Añade o quita un manga de los favoritos del usuario. Al añadirlo intenta vincularlo con AniList si el título coincide exactamente.",
             "inputSchema": { "type": "object", "properties": with(json!({
                 "title": { "type": "string", "description": "Título del manga" },
                 "source": { "type": "string", "description": "Nombre de la fuente" },
@@ -393,6 +480,16 @@ fn tools() -> Value {
                 "placement": { "type": "string", "enum": ["side", "window"], "description": "side = panel al lado (por defecto), window = ventana nueva" }
             } },
             "annotations": { "openWorldHint": false }
+        },
+        {
+            "name": "link_anilist",
+            "title": "Vincular con AniList",
+            "description": "Vincula un favorito con su obra en AniList (necesario para que el progreso se guarde en la cuenta del usuario) y sincroniza. Sin media_id, vincula solo si el título coincide exactamente; si hay dudas devuelve candidatas: pregunta al usuario y vuelve a llamar con media_id.",
+            "inputSchema": { "type": "object", "properties": with(json!({
+                "media_id": { "type": "integer", "description": "Id de la obra en AniList (de las candidatas)" },
+                "query": { "type": "string", "description": "Buscar en AniList con otro título (por defecto, el del favorito)" }
+            })), "required": ["source_id", "manga_url"] },
+            "annotations": { "openWorldHint": true, "idempotentHint": true }
         },
         {
             "name": "sync_anilist",
@@ -431,7 +528,7 @@ mod tests {
 
         let list = server.handle(r#"{"jsonrpc":"2.0","id":2,"method":"tools/list"}"#).await.unwrap();
         let names: Vec<_> = list["result"]["tools"].as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap().to_string()).collect();
-        assert_eq!(names, ["search_manga", "library", "chapters", "mark_read", "set_favorite", "open_reader", "sync_anilist"]);
+        assert_eq!(names, ["search_manga", "library", "chapters", "mark_read", "set_favorite", "open_reader", "link_anilist", "sync_anilist"]);
         for t in list["result"]["tools"].as_array().unwrap() {
             assert_eq!(t["inputSchema"]["type"], "object", "{}", t["name"]);
         }

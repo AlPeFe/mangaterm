@@ -24,6 +24,10 @@ static HTTP: LazyLock<reqwest::Client> = LazyLock::new(|| {
     reqwest::Client::builder()
         .user_agent(concat!("hantho/", env!("CARGO_PKG_VERSION")))
         .timeout(Duration::from_secs(20))
+        // Sin pool de conexiones: el cliente es global y una conexión guardada queda ligada al
+        // runtime de tokio que la abrió (en los tests cada uno tiene el suyo). AniList se
+        // consulta poco, así que reabrir no cuesta nada.
+        .pool_max_idle_per_host(0)
         .build()
         .expect("cliente HTTP")
 });
@@ -92,6 +96,31 @@ impl Media {
         let t = &self.title;
         t.romaji.clone().or(t.english.clone()).or(t.native.clone()).unwrap_or_else(|| format!("#{}", self.id))
     }
+
+    fn titles(&self) -> impl Iterator<Item = &String> {
+        [&self.title.romaji, &self.title.english, &self.title.native].into_iter().flatten()
+    }
+}
+
+/// La obra de AniList que corresponde sin duda a `title`, para vincular sin preguntar.
+/// Solo vale una coincidencia exacta del título (romaji, inglés o nativo, ignorando mayúsculas
+/// y signos); si hay varias, gana la que es manga normal frente a novela o one-shot. Ante
+/// cualquier ambigüedad devuelve `None` y que elija el usuario: un vínculo equivocado
+/// escribiría el progreso en otra obra.
+pub fn best_match<'a>(title: &str, candidates: &'a [Media]) -> Option<&'a Media> {
+    let key = crate::search::normalize(title);
+    if key.is_empty() {
+        return None;
+    }
+    let exact: Vec<&Media> = candidates.iter().filter(|m| m.titles().any(|t| crate::search::normalize(t) == key)).collect();
+    match exact.as_slice() {
+        [one] => Some(one),
+        [] => None,
+        many => {
+            let manga: Vec<&&Media> = many.iter().filter(|m| m.format.as_deref() == Some("MANGA")).collect();
+            (manga.len() == 1).then(|| *manga[0])
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -109,7 +138,15 @@ async fn graphql<T: DeserializeOwned>(query: &str, variables: Value, token: Opti
         if let Some(token) = token {
             req = req.bearer_auth(token);
         }
-        let resp = req.send().await.context("no se ha podido conectar con AniList")?;
+        // Fallos de red (conexión rechazada o cortada): reintentar con espera creciente
+        let resp = match req.send().await {
+            Ok(resp) => resp,
+            Err(_) if attempt < MAX_RETRIES => {
+                LIMITER.back_off(Duration::from_secs(attempt as u64 + 1)).await;
+                continue;
+            }
+            Err(e) => return Err(e).context("no se ha podido conectar con AniList"),
+        };
         let status = resp.status();
         let header = |name: &str| resp.headers().get(name).and_then(|v| v.to_str().ok()).and_then(|v| v.parse::<u64>().ok());
 
@@ -126,7 +163,14 @@ async fn graphql<T: DeserializeOwned>(query: &str, variables: Value, token: Opti
             LIMITER.back_off(Duration::from_secs(20)).await;
         }
 
-        let value: Value = resp.json().await.context("respuesta inválida de AniList")?;
+        let value: Value = match resp.json().await {
+            Ok(v) => v,
+            Err(_) if attempt < MAX_RETRIES => {
+                LIMITER.back_off(Duration::from_secs(attempt as u64 + 1)).await;
+                continue;
+            }
+            Err(e) => return Err(e).context("respuesta inválida de AniList"),
+        };
         if let Some(err) = value["errors"].as_array().and_then(|e| e.first()) {
             let msg = err["message"].as_str().unwrap_or("error desconocido");
             if status.as_u16() == 401 || msg.contains("Invalid token") {
@@ -156,6 +200,23 @@ pub async fn viewer(token: &str) -> Result<(i64, String)> {
 }
 
 const MEDIA_FIELDS: &str = "id title { romaji english native } format chapters status startDate { year } siteUrl";
+
+/// Una obra por id (cacheada una semana).
+pub async fn media(id: i64) -> Result<Media> {
+    let key = id.to_string();
+    if let Some(hit) = cache::get::<Media>("anilist-media", &key, SEARCH_TTL) {
+        return Ok(hit);
+    }
+    #[derive(Deserialize)]
+    struct Data {
+        #[serde(rename = "Media")]
+        media: Media,
+    }
+    let q = format!("query($id: Int) {{ Media(id: $id, type: MANGA) {{ {MEDIA_FIELDS} }} }}");
+    let d: Data = graphql(&q, json!({ "id": id }), None).await?;
+    cache::put("anilist-media", &key, &d.media);
+    Ok(d.media)
+}
 
 /// Busca mangas por título. Cacheado una semana: los resultados casi no cambian.
 pub async fn search(query: &str) -> Result<Vec<Media>> {
@@ -248,5 +309,37 @@ mod tests {
         println!("API: {api_time:?} · caché: {:?}", t.elapsed());
         assert_eq!(first.len(), second.len());
         assert!(t.elapsed() < std::time::Duration::from_millis(50));
+    }
+}
+
+#[cfg(test)]
+mod match_tests {
+    use super::*;
+
+    fn media(id: i64, romaji: &str, english: Option<&str>, format: &str) -> Media {
+        Media {
+            id,
+            title: Title { romaji: Some(romaji.into()), english: english.map(String::from), native: None },
+            format: Some(format.into()),
+            chapters: None,
+            status: None,
+            start_date: None,
+            site_url: None,
+        }
+    }
+
+    #[test]
+    fn best_match_is_conservative() {
+        let gb = [media(87395, "Grand Blue", Some("Grand Blue Dreaming"), "MANGA"), media(103069, "Guraburu!", None, "MANGA")];
+        assert_eq!(best_match("Grand Blue", &gb).map(|m| m.id), Some(87395));
+        assert_eq!(best_match("grand blue dreaming", &gb).map(|m| m.id), Some(87395), "también por el título en inglés");
+        assert_eq!(best_match("Grand Blue Extra", &gb).map(|m| m.id), None, "sin coincidencia exacta no se vincula");
+
+        // Mismo título en manga y novela: gana el manga
+        let both = [media(1, "Overlord", None, "NOVEL"), media(2, "Overlord", None, "MANGA")];
+        assert_eq!(best_match("Overlord", &both).map(|m| m.id), Some(2));
+        // Dos mangas con el mismo título: ambiguo
+        let twins = [media(1, "Monster", None, "MANGA"), media(2, "Monster", None, "MANGA")];
+        assert_eq!(best_match("Monster", &twins).map(|m| m.id), None);
     }
 }
