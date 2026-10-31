@@ -162,7 +162,8 @@ Desde la línea de comandos, sin TUI:
 |---|---|
 | `hantho search "grand blue" [--lang es]` | Busca en todas las fuentes instaladas |
 | `hantho ext repo add\|remove <url>` / `ext repo list` | Gestiona tus repositorios de extensiones |
-| `hantho ext update` | Descarga el catálogo más reciente de tus repositorios |
+| `hantho ext update` | Descarga el catálogo más reciente de tus repositorios y avisa si hay versiones nuevas |
+| `hantho ext upgrade` | Actualiza todas las extensiones instaladas que tengan versión nueva |
 | `hantho ext find [texto] [--lang es] [--sfw]` | Busca extensiones en el catálogo |
 | `hantho ext install <nombre…> [--lang es] [--sfw]` | Instala por nombre/paquete o todas las de un idioma |
 | `hantho ext list` / `ext remove <paquete>` | Lista o desinstala extensiones |
@@ -179,6 +180,7 @@ En todas las listas funcionan `↑`/`↓` y `k`/`j`; `esc` o `q` vuelve atrás; 
 | Pantalla | Teclas |
 |---|---|
 | Inicio | `1`–`7` o `enter` elegir · `/` buscar · `q` salir |
+| Extensiones | `U` actualizar todas las que tengan versión nueva · `a` añadir. La TUI comprueba si hay versiones nuevas al arrancar (descarga el catálogo si tiene más de un día) y lo indica en el menú |
 | Añadir extensiones | `enter` instalar, actualizar o quitar · `/` filtrar · `l` idioma · `n` ocultar NSFW · `r` añadir repositorio · `u` actualizar catálogo |
 | Biblioteca | `enter` abrir · `d` quitar · `/` buscar |
 | Búsqueda | escribe y pulsa `enter` · `tab`/`↓` ir a resultados · `/` editar · `b` biblioteca · `ctrl+L` (o `l` fuera del cuadro) idioma de las fuentes: por defecto el del sistema + inglés; se recuerda |

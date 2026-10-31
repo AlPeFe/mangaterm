@@ -162,7 +162,8 @@ From the command line, without the TUI:
 |---|---|
 | `hantho search "grand blue" [--lang en]` | Search every installed source |
 | `hantho ext repo add\|remove <url>` / `ext repo list` | Manage your extension repositories |
-| `hantho ext update` | Download the latest catalog from your repositories |
+| `hantho ext update` | Download the latest catalog from your repositories and say if there are new versions |
+| `hantho ext upgrade` | Update every installed extension that has a new version |
 | `hantho ext find [text] [--lang en] [--sfw]` | Search the extension catalog |
 | `hantho ext install <name…> [--lang en] [--sfw]` | Install by name/package, or every extension in a language |
 | `hantho ext list` / `ext remove <package>` | List or uninstall extensions |
@@ -179,6 +180,7 @@ Every list supports `↑`/`↓` and `k`/`j`; `esc` or `q` goes back; `ctrl+c` qu
 | Screen | Keys |
 |---|---|
 | Home | `1`–`7` or `enter` choose · `/` search · `q` quit |
+| Extensions | `U` update every one with a new version · `a` add more. The TUI checks for new versions on startup (downloading the catalog if it's over a day old) and shows it in the menu |
 | Add extensions | `enter` install, update or remove · `/` filter · `l` language · `n` hide NSFW · `r` add repository · `u` update catalog |
 | Library | `enter` open · `d` remove · `/` search |
 | Search | type and press `enter` · `tab`/`↓` go to results · `/` edit · `b` library · `ctrl+L` (or `l` outside the box) source language: system language + English by default; remembered |

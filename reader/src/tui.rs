@@ -66,6 +66,11 @@ enum Msg {
     RepoAdded(Result<(String, usize)>),
     /// Paquete, y la extensión instalada con sus fuentes ya cargadas en el host.
     ExtInstalled(String, Result<(Installed, Vec<LoadedSource>)>),
+    /// Catálogo para comprobar si hay versiones nuevas de las extensiones instaladas.
+    Updates(Result<Vec<catalog::Extension>>),
+    /// Extensiones actualizadas: las instaladas, sus fuentes recargadas, los errores y los ids de
+    /// fuente de la versión anterior (para quitarlas).
+    Upgraded(Vec<Installed>, Vec<LoadedSource>, Vec<String>, Vec<String>),
 }
 
 /// Una página descargada. En modo Sixel se codifica con nuestro render (`render.rs`) para el
@@ -329,6 +334,9 @@ struct App {
     /// Hay que redibujar. Los ticks solo marcan esto en pantallas animadas.
     dirty: bool,
     installed: Vec<Installed>,
+    /// Instaladas con versión nueva en el catálogo (la versión del catálogo).
+    updates: Vec<catalog::Extension>,
+    upgrading: bool,
     extensions_state: ListState,
     /// «Añadir extensiones»: catálogo de los repositorios del usuario.
     add: AddExtensions,
@@ -440,6 +448,8 @@ impl App {
             dirty: true,
             extensions_state: ListState::default().with_selected((!installed.is_empty()).then_some(0)),
             installed,
+            updates: Vec::new(),
+            upgrading: false,
             add: AddExtensions { repos: catalog::repos(), ..Default::default() },
         }
     }
@@ -535,6 +545,7 @@ impl App {
                 if !self.query.is_empty() {
                     self.start_search();
                 }
+                self.check_updates();
             }
             Msg::HostReady(Err(e)) => self.status = trf!("error iniciando ext-host: {e}", "error starting ext-host: {e}"),
             Msg::Search(generation, ev) => {
@@ -637,6 +648,7 @@ impl App {
                 match res {
                     Ok(cat) => {
                         self.status = trf!("{} extensiones en {} repositorios", "{} extensions in {} repositories", cat.len(), self.add.repos.len());
+                        self.updates = catalog::outdated(&cat, &self.installed);
                         self.add.catalog = Some(cat);
                         self.add.reselect();
                     }
@@ -662,11 +674,32 @@ impl App {
                         self.sources.retain(|s| !sources.iter().any(|n| n.info.id == s.info.id));
                         self.sources.extend(sources);
                         self.installed = crate::ext::list();
+                        self.updates.retain(|u| u.package_name != pkg);
                     }
                     Err(e) => {
                         self.installed = crate::ext::list();
                         self.status = format!("✕ {e}");
                     }
+                }
+            }
+            Msg::Updates(Ok(cat)) => {
+                self.updates = catalog::outdated(&cat, &self.installed);
+                if !self.updates.is_empty() && self.screen == Screen::Home {
+                    let n = self.updates.len();
+                    self.status = trf!("↑ {n} extensiones tienen versión nueva: U en Extensiones", "↑ {n} extensions have a new version: U in Extensions");
+                }
+            }
+            // Sin conexión o sin repositorio: ya se comprobará la próxima vez
+            Msg::Updates(Err(_)) => {}
+            Msg::Upgraded(installed, sources, errors, old_ids) => {
+                self.upgrading = false;
+                self.sources.retain(|s| !old_ids.contains(&s.info.id));
+                self.sources.extend(sources);
+                self.installed = crate::ext::list();
+                self.updates.retain(|u| !installed.iter().any(|i| i.pkg == u.package_name));
+                self.status = trf!("✓ {} extensiones actualizadas", "✓ {} extensions updated", installed.len());
+                if let Some(first) = errors.first() {
+                    self.status += &trf!(" · {} con errores ({first})", " · {} with errors ({first})", errors.len());
                 }
             }
             Msg::AutoLink(source_id, url, title, res) => self.on_auto_link(&source_id, &url, &title, res),
@@ -697,6 +730,7 @@ impl App {
             Screen::Extensions => match key.code {
                 KeyCode::Esc | KeyCode::Char('q') | KeyCode::Backspace => self.screen = Screen::Home,
                 KeyCode::Char('a') => self.open_add_extensions(),
+                KeyCode::Char('U') | KeyCode::Char('u') => self.upgrade_all(),
                 KeyCode::Up | KeyCode::Char('k') => select_prev(&mut self.extensions_state),
                 KeyCode::Down | KeyCode::Char('j') => select_next(&mut self.extensions_state, self.installed.len()),
                 _ => {}
@@ -816,6 +850,52 @@ impl App {
             }
             _ => self.quit = true,
         }
+    }
+
+    /// Comprueba en segundo plano si hay versiones nuevas: con el índice guardado, o descargándolo
+    /// si tiene más de un día.
+    fn check_updates(&mut self) {
+        if catalog::repos().is_empty() {
+            return;
+        }
+        let stale = catalog::age().is_none_or(|age| age > Duration::from_secs(24 * 60 * 60));
+        let tx = self.tx.clone();
+        tokio::spawn(async move {
+            let cat = if stale { catalog::update().await } else { catalog::load().await };
+            let _ = tx.send(Msg::Updates(cat));
+        });
+    }
+
+    /// Instala la versión nueva de todas las extensiones desactualizadas y las recarga en el host.
+    fn upgrade_all(&mut self) {
+        if self.upgrading || self.updates.is_empty() {
+            return;
+        }
+        self.upgrading = true;
+        self.status = trf!("actualizando {} extensiones…", "updating {} extensions…", self.updates.len());
+        let (tx, host, exts) = (self.tx.clone(), self.host.clone(), self.updates.clone());
+        tokio::spawn(async move {
+            let mut installed = Vec::new();
+            let mut errors = Vec::new();
+            for (e, res) in crate::ext::upgrade_all(&exts).await {
+                match res {
+                    Ok(i) => installed.push(i),
+                    Err(err) => errors.push(format!("{}: {err}", e.name)),
+                }
+            }
+            let old_ids: Vec<String> = exts
+                .iter()
+                .filter(|e| installed.iter().any(|i| i.pkg == e.package_name))
+                .flat_map(|e| e.sources.iter().map(|s| s.id.to_string()))
+                .collect();
+            let mut sources = Vec::new();
+            if let Some(host) = host {
+                let (loaded, failed) = host.load_all(&installed).await;
+                sources = loaded;
+                errors.extend(failed.into_iter().map(|(name, e)| format!("{name}: {}", search::short_error(&e))));
+            }
+            let _ = tx.send(Msg::Upgraded(installed, sources, errors, old_ids));
+        });
     }
 
     fn open_add_extensions(&mut self) {
@@ -1994,7 +2074,14 @@ impl App {
         vec![
             MenuItem { icon: "♡", label: tr!("Biblioteca", "Library"), detail: if favs == 1 { tr!("1 favorito", "1 favorite").into() } else { trf!("{favs} favoritos", "{favs} favorites") } },
             MenuItem { icon: "⌕", label: tr!("Buscar", "Search"), detail: sources },
-            MenuItem { icon: "✦", label: tr!("Extensiones", "Extensions"), detail: trf!("{} instaladas", "{} installed", self.installed.len()) },
+            MenuItem {
+                icon: "✦",
+                label: tr!("Extensiones", "Extensions"),
+                detail: match self.updates.len() {
+                    0 => trf!("{} instaladas", "{} installed", self.installed.len()),
+                    n => trf!("{} instaladas · ↑ {n} nuevas", "{} installed · ↑ {n} new", self.installed.len()),
+                },
+            },
             MenuItem {
                 icon: "✚",
                 label: tr!("Añadir extensiones", "Add extensions"),
@@ -2094,23 +2181,38 @@ impl App {
                     _ => (tr!("apto", "safe"), MINT),
                 };
                 let loaded = self.sources.iter().any(|s| s.info.name == e.name);
-                ListItem::new(Line::from(vec![
+                let mut spans = vec![
                     Span::raw(if loaded { "● " } else { "○ " }).fg(if loaded { MINT } else { FAINT }),
                     Span::raw(format!("{:<34}", e.name)).fg(TEXT),
                     Span::raw(format!("{:<9}", e.version_name)).fg(MUTED),
                     Span::raw(format!("{:<8}", e.langs.join(","))).fg(LAVENDER),
                     Span::raw(label).fg(color),
-                ]))
+                ];
+                if let Some(new) = self.updates.iter().find(|u| u.package_name == e.pkg) {
+                    spans.push(Span::raw(format!("  ↑ {}", new.version_name)).fg(PEACH));
+                }
+                ListItem::new(Line::from(spans))
             })
             .collect();
-        let title = trf!("✦ extensiones · {} instaladas · {} fuentes cargadas", "✦ extensions · {} installed · {} sources loaded", self.installed.len(), self.sources.len());
+        let mut title = trf!("✦ extensiones · {} instaladas · {} fuentes cargadas", "✦ extensions · {} installed · {} sources loaded", self.installed.len(), self.sources.len());
+        if !self.updates.is_empty() {
+            title += &trf!(" · ↑ {} con versión nueva", " · ↑ {} with a new version", self.updates.len());
+        }
         f.render_stateful_widget(theme::highlight(List::new(items).block(theme::block_focused(&title))), main, &mut self.extensions_state);
         theme::status_bar(
             f,
             status_area,
             tr!("EXTENSIONES", "EXTENSIONS"),
-            if self.installed.is_empty() { tr!("todavía no tienes ninguna: pulsa a para añadir", "you don't have any yet: press a to add some") } else { tr!("a para añadir más", "a to add more") },
-            &[("↑↓", tr!("mover", "move")), ("a", tr!("añadir", "add")), ("esc", tr!("menú", "menu"))],
+            &if self.installed.is_empty() {
+                tr!("todavía no tienes ninguna: pulsa a para añadir", "you don't have any yet: press a to add some").to_string()
+            } else if self.upgrading {
+                format!("{} {}", theme::spinner(self.tick), self.status)
+            } else if !self.updates.is_empty() {
+                trf!("U para actualizar las {}", "U to update all {}", self.updates.len())
+            } else {
+                tr!("todas al día · a para añadir más", "all up to date · a to add more").to_string()
+            },
+            &[("↑↓", tr!("mover", "move")), ("U", tr!("actualizar", "update")), ("a", tr!("añadir", "add")), ("esc", tr!("menú", "menu"))],
         );
     }
 

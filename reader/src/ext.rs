@@ -57,6 +57,19 @@ pub async fn install(ext: &Extension) -> Result<Installed> {
     Ok(item)
 }
 
+/// Instala la versión del catálogo de cada extensión (de cuatro en cuatro).
+pub async fn upgrade_all(exts: &[Extension]) -> Vec<(Extension, Result<Installed>)> {
+    use futures::stream::{self, StreamExt};
+    stream::iter(exts.iter().cloned())
+        .map(|e| async move {
+            let res = install(&e).await;
+            (e, res)
+        })
+        .buffer_unordered(4)
+        .collect()
+        .await
+}
+
 pub fn uninstall(pkg: &str) -> Result<bool> {
     let mut all = list();
     let Some(pos) = all.iter().position(|i| i.pkg == pkg) else { return Ok(false) };

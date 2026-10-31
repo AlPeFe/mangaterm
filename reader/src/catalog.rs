@@ -198,6 +198,26 @@ pub async fn update() -> Result<Vec<Extension>> {
     Ok(merge(lists))
 }
 
+/// Hace cuánto se descargó el índice más viejo de los repositorios (None si falta alguno).
+pub fn age() -> Option<std::time::Duration> {
+    let repos = repos();
+    let mut oldest = std::time::Duration::ZERO;
+    for url in &repos {
+        let modified = std::fs::metadata(cache_path(url)).and_then(|m| m.modified()).ok()?;
+        oldest = oldest.max(modified.elapsed().unwrap_or_default());
+    }
+    (!repos.is_empty()).then_some(oldest)
+}
+
+/// Las extensiones instaladas que tienen una versión más nueva en el catálogo (la del catálogo).
+pub fn outdated(catalog: &[Extension], installed: &[crate::ext::Installed]) -> Vec<Extension> {
+    catalog
+        .iter()
+        .filter(|e| installed.iter().any(|i| i.pkg == e.package_name && i.version_code < e.version_code))
+        .cloned()
+        .collect()
+}
+
 /// Junta los índices locales de todos los repositorios; descarga los que falten.
 pub async fn load() -> Result<Vec<Extension>> {
     let repos = repos();
@@ -240,7 +260,26 @@ fn decode(gz: &[u8]) -> Result<Vec<Extension>> {
 
 #[cfg(test)]
 mod tests {
-    use super::normalize_repo;
+    use super::{normalize_repo, outdated, Extension};
+    use crate::ext::Installed;
+
+    #[test]
+    fn outdated_extensions() {
+        let ext = |pkg: &str, version_code| Extension { package_name: pkg.into(), version_code, ..Default::default() };
+        let inst = |pkg: &str, version_code| Installed {
+            pkg: pkg.into(),
+            name: pkg.into(),
+            version_code,
+            version_name: String::new(),
+            content_warning: 0,
+            langs: Vec::new(),
+        };
+        let catalog = [ext("a", 5), ext("b", 3), ext("c", 9)];
+        // a desactualizada, b al día, c sin instalar, d instalada pero ya no está en el catálogo
+        let installed = [inst("a", 4), inst("b", 3), inst("d", 1)];
+        let found: Vec<_> = outdated(&catalog, &installed).into_iter().map(|e| (e.package_name, e.version_code)).collect();
+        assert_eq!(found, vec![("a".to_string(), 5)]);
+    }
 
     #[test]
     fn repo_urls() {

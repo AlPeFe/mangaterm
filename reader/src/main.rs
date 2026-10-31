@@ -109,6 +109,8 @@ enum ExtCmd {
     Repo(RepoCmd),
     #[command(about = tr!("Descarga la última versión del catálogo de tus repositorios", "Download the latest catalog from your repositories"))]
     Update,
+    #[command(about = tr!("Actualiza las extensiones instaladas que tengan versión nueva", "Update the installed extensions that have a new version"))]
+    Upgrade,
     #[command(about = tr!("Busca extensiones en el catálogo", "Search the extension catalog"))]
     Find {
         query: Option<String>,
@@ -322,6 +324,31 @@ async fn ext_cmd(cmd: ExtCmd) -> Result<()> {
         ExtCmd::Update => {
             let exts = catalog::update().await?;
             println!("{}", trf!("catálogo actualizado: {} extensiones", "catalog updated: {} extensions", exts.len()));
+            let outdated = catalog::outdated(&exts, &ext::list());
+            if !outdated.is_empty() {
+                println!("{}", trf!("↑ {} instaladas tienen versión nueva: hantho ext upgrade", "↑ {} installed ones have a new version: hantho ext upgrade", outdated.len()));
+            }
+        }
+        ExtCmd::Upgrade => {
+            let installed = ext::list();
+            let outdated = catalog::outdated(&catalog::update().await?, &installed);
+            if outdated.is_empty() {
+                println!("{}", trf!("✓ las {} extensiones están al día", "✓ all {} extensions are up to date", installed.len()));
+                return Ok(());
+            }
+            let mut ok = 0;
+            for (e, res) in ext::upgrade_all(&outdated).await {
+                let old = installed.iter().find(|i| i.pkg == e.package_name).map(|i| i.version_name.as_str()).unwrap_or("?");
+                match res {
+                    Ok(_) => {
+                        ok += 1;
+                        println!("↑ {:<32} {old} → {}", e.name, e.version_name);
+                    }
+                    Err(err) => println!("✕ {:<32} {err}", e.name),
+                }
+            }
+            println!("{}", trf!("{ok} de {} actualizadas", "{ok} of {} updated", outdated.len()));
+            println!("{}", tr!("Si Han Thỏ estaba abierto (la TUI o el MCP de un agente), sigue con las versiones anteriores hasta que lo reinicies.", "If Han Thỏ was already open (the TUI or an agent's MCP), it keeps the previous versions until you restart it."));
         }
         ExtCmd::Find { query, lang, sfw } => {
             let catalog = catalog::load().await?;
