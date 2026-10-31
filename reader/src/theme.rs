@@ -61,12 +61,23 @@ pub fn status_bar(f: &mut Frame, area: Rect, badge: &str, message: &str, keys: &
         hints.push(Span::raw(*key).fg(PINK).bold());
         hints.push(Span::raw(format!(" {desc}")).fg(MUTED));
     }
-    let hints_width: usize = hints.iter().map(|s| s.content.chars().count()).sum::<usize>() + 1;
+    let mut hints_width: usize = hints.iter().map(|s| s.content.chars().count()).sum::<usize>() + 1;
     let badge = format!(" {badge} ");
     let badge_width = badge.chars().count() + 1;
+    // En paneles estrechos (p. ej. al lado del chat de un agente) el mensaje importa más que los atajos
+    if (area.width as usize) < hints_width + badge_width + 24 {
+        hints.clear();
+        hints_width = 0;
+    }
 
     let msg_width = (area.width as usize).saturating_sub(hints_width + badge_width);
-    let message: String = message.chars().take(msg_width).collect();
+    let message: String = if message.chars().count() > msg_width {
+        let mut cut: String = message.chars().take(msg_width.saturating_sub(2)).collect();
+        cut.push('…');
+        cut
+    } else {
+        message.to_string()
+    };
     let pad = msg_width.saturating_sub(message.chars().count());
 
     let mut spans = vec![Span::raw(badge).bg(PINK).fg(ON_PINK).bold(), Span::raw(" "), Span::raw(message).fg(TEXT)];

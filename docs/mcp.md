@@ -4,6 +4,8 @@
 de terminal —Claude Code, Codex, Hermes, pi o cualquier cliente MCP— puede buscar manga, consultar
 tu biblioteca, marcar capítulos y **abrir el lector en un panel al lado del chat**.
 
+![Un agente de terminal abre Han Thỏ en un panel lateral](../assets/screenshots/mcp.png)
+
 ## Herramientas
 
 | Herramienta | Qué hace |

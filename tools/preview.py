@@ -23,8 +23,8 @@ def load_font(names, size):
     return ImageFont.load_default()
 
 
-def main():
-    rows = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+def render(rows):
+    """Dibuja un volcado (lista de filas de celdas [carácter, fg, bg]) y devuelve la imagen."""
     mono = load_font(["CascadiaMono.ttf", "consola.ttf", "DejaVuSansMono.ttf"], 16)
     symbols = load_font(["seguisym.ttf", "DejaVuSans.ttf"], 15)
     img = Image.new("RGB", (len(rows[0]) * CW, len(rows) * CH), BG)
@@ -42,6 +42,11 @@ def main():
                 # Cascadia/Consolas no traen estos símbolos (la terminal los toma de otra fuente)
                 font = symbols if ord(ch) > 0x2000 and not 0x2500 <= ord(ch) <= 0x259F else mono
                 draw.text((x * CW, y * CH + 1), ch, font=font, fill=color)
+    return img
+
+
+def main():
+    img = render(json.loads(Path(sys.argv[1]).read_text(encoding="utf-8")))
     img.save(sys.argv[2])
     print(sys.argv[2], img.size)
 

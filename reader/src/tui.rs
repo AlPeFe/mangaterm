@@ -1623,7 +1623,7 @@ impl App {
     fn menu_items(&self) -> Vec<MenuItem> {
         let favs = self.library.favorites.len();
         let pending = self.library.favorites.iter().filter(|f| f.needs_sync()).count();
-        let sources = if self.host.is_some() { format!("{} fuentes", self.sources.len()) } else { "cargando…".into() };
+        let sources = if !self.sources.is_empty() { format!("{} fuentes", self.sources.len()) } else { "cargando…".into() };
         let anilist = match &self.anilist_user {
             Some(name) if pending > 0 => format!("@{name} · {pending} sin sincronizar"),
             Some(name) => format!("@{name}"),
@@ -1641,7 +1641,7 @@ impl App {
 
     fn draw_home(&mut self, f: &mut Frame) {
         let items = self.menu_items();
-        let footer = if self.host.is_none() {
+        let footer = if self.host.is_none() && self.sources.is_empty() {
             Line::from(vec![
                 Span::raw(theme::spinner(self.tick)).fg(PINK),
                 Span::raw(" cargando extensiones…").fg(MUTED),
@@ -2320,5 +2320,123 @@ mod tests {
         app.status = "importación terminada ✿".into();
         terminal.draw(|f| app.draw(f)).unwrap();
         theme::dump_buffer(terminal.backend().buffer(), &format!("{dir}/backup.json"));
+
+        // Inicio
+        let src = |id: &str, name: &str| LoadedSource {
+            info: SourceInfo { id: id.into(), name: name.into(), lang: "es".into(), base_url: None, supports_latest: true },
+        };
+        app.sources = ["Manga TV", "LectorTMO", "Olympus Scanlation", "InManga", "Ikigai Mangas"]
+            .iter()
+            .enumerate()
+            .map(|(i, n)| src(&i.to_string(), n))
+            .collect();
+        app.installed = app
+            .sources
+            .iter()
+            .map(|s| Installed {
+                pkg: format!("eu.kanade.tachiyomi.extension.es.{}", s.info.name.to_lowercase().replace(' ', "")),
+                name: s.info.name.clone(),
+                version_code: 1,
+                version_name: "1.4.12".into(),
+                content_warning: 1,
+                langs: vec!["es".into()],
+            })
+            .collect();
+        app.screen = Screen::Home;
+        app.home.skip_intro();
+        for _ in 0..40 {
+            app.home.tick(Rect::new(0, 0, 120, 30));
+        }
+        terminal.draw(|f| app.draw(f)).unwrap();
+        theme::dump_buffer(terminal.backend().buffer(), &format!("{dir}/home.json"));
+
+        // Búsqueda global
+        let results = [
+            ("Grand Blue", vec![0, 1, 2, 3]),
+            ("Grand Blue Dreaming", vec![4]),
+            ("Grand Blue: Gekijouban", vec![1]),
+            ("Blue Lock", vec![0, 1, 2, 3, 4]),
+            ("Blue Period", vec![1, 3]),
+            ("Ao no Hako (Blue Box)", vec![0, 2]),
+        ];
+        app.groups = results
+            .iter()
+            .map(|(title, idx)| Group {
+                key: search::normalize(title),
+                title: title.to_string(),
+                entries: idx.iter().map(|&i| (app.sources[i].clone(), Manga { title: title.to_string(), ..Default::default() })).collect(),
+            })
+            .collect();
+        app.query = "grand blue".into();
+        app.input = "grand blue".into();
+        app.editing = false;
+        app.groups_state.select(Some(0));
+        app.status = "5 fuentes en 0,8 s".into();
+        app.screen = Screen::Search;
+        terminal.draw(|f| app.draw(f)).unwrap();
+        theme::dump_buffer(terminal.backend().buffer(), &format!("{dir}/search.json"));
+
+        // Extensiones
+        app.extensions_state.select(Some(1));
+        app.screen = Screen::Extensions;
+        terminal.draw(|f| app.draw(f)).unwrap();
+        theme::dump_buffer(terminal.backend().buffer(), &format!("{dir}/extensions.json"));
+
+        // AniList
+        app.screen = Screen::AniList;
+        app.status = "conectado ✿".into();
+        terminal.draw(|f| app.draw(f)).unwrap();
+        theme::dump_buffer(terminal.backend().buffer(), &format!("{dir}/anilist.json"));
+
+        // Elegir la obra de AniList
+        let media = |id: i64, romaji: &str, english: Option<&str>, format: &str, year: i32, chapters: Option<i32>| Media {
+            id,
+            title: anilist::Title { romaji: Some(romaji.into()), english: english.map(Into::into), native: None },
+            format: Some(format.into()),
+            chapters,
+            status: None,
+            start_date: Some(anilist::StartDate { year: Some(year) }),
+            site_url: None,
+        };
+        app.anilist_matches = Some(vec![
+            media(87395, "Grand Blue", Some("Grand Blue Dreaming"), "MANGA", 2014, None),
+            media(2, "Blue Lock", None, "MANGA", 2018, None),
+            media(3, "Blue Period", None, "MANGA", 2017, None),
+            media(4, "Ao no Hako", Some("Blue Box"), "MANGA", 2021, None),
+        ]);
+        app.anilist_state.select(Some(0));
+        app.screen = Screen::AnilistPick;
+        terminal.draw(|f| app.draw(f)).unwrap();
+        theme::dump_buffer(terminal.backend().buffer(), &format!("{dir}/anilist_pick.json"));
+
+        // Lector: la página la dibuja tools/screenshots.py encima (Sixel no pasa por el buffer)
+        let Ok(page_path) = std::env::var("HANTHO_PREVIEW_PAGE") else { return };
+        let img = Arc::new(image::open(page_path).unwrap());
+        let details = app.details.clone().unwrap();
+        for (name, width) in [("reader", 120u16), ("reader_side", 64)] {
+            let mut terminal = Terminal::new(TestBackend::new(width, 30)).unwrap();
+            app.sixel = true;
+            app.font = (10, 20);
+            app.reader_area = Rect::new(0, 0, width, 29);
+            let encoded = render::encode(&img, width, 29, app.font);
+            let pages: Vec<Page> = (0..18).map(|i| Page { index: i, url: String::new(), image_url: None }).collect();
+            let mut images = HashMap::new();
+            images.insert(6, PageImage { img: img.clone(), encoded: Some(((width, 29), encoded)), encoding: None, proto: None });
+            app.reader = Some(Reader {
+                source: app.sources[0].clone(),
+                manga: details.manga.clone(),
+                manga_url: details.manga.url.clone(),
+                chapters: details.chapters.clone(),
+                chapter: 7,
+                pages,
+                page: 6,
+                requested: HashSet::new(),
+                images,
+                error: None,
+            });
+            app.screen = Screen::Reader;
+            terminal.draw(|f| app.draw(f)).unwrap();
+            theme::dump_buffer(terminal.backend().buffer(), &format!("{dir}/{name}.json"));
+        }
     }
 }

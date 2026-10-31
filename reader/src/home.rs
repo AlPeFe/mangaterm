@@ -98,6 +98,12 @@ impl Home {
         }
     }
 
+    /// Para las capturas: como si la intro ya hubiera terminado.
+    #[cfg(test)]
+    pub fn skip_intro(&mut self) {
+        self.started -= std::time::Duration::from_secs(5);
+    }
+
     /// Avanza la animación un paso (se llama en cada tick).
     pub fn tick(&mut self, area: Rect) {
         let target = (area.width as usize * area.height as usize / 90).clamp(8, 60);

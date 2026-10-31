@@ -53,13 +53,22 @@ mismas extensiones de [Keiyoushi](https://github.com/keiyoushi/extensions) que u
 
 ## Capturas
 
-<!-- Reemplazar estas imágenes por capturas reales (960×540 o similar). -->
-
 | Inicio | Búsqueda global |
 |---|---|
-| ![Pantalla de inicio](assets/screenshots/inicio.png) | ![Búsqueda global](assets/screenshots/busqueda.png) |
-| **Lector** | **AniList** |
-| ![Lector de páginas](assets/screenshots/lector.png) | ![Vinculación con AniList](assets/screenshots/anilist.png) |
+| ![Pantalla de inicio con el logo y el menú](assets/screenshots/inicio.png) | ![Búsqueda en todas las fuentes a la vez](assets/screenshots/busqueda.png) |
+| **Capítulos** (los leídos, apagados) | **Lector** (Sixel) |
+| ![Lista de capítulos con los leídos marcados](assets/screenshots/capitulos.png) | ![Lector de páginas](assets/screenshots/lector.png) |
+| **Biblioteca** | **Vincular con AniList** |
+| ![Biblioteca de favoritos con su ficha](assets/screenshots/biblioteca.png) | ![Elegir la obra de AniList](assets/screenshots/anilist.png) |
+| **Backup de Mihon** | **Extensiones** |
+| ![Importar y exportar backups de Mihon](assets/screenshots/backup.png) | ![Extensiones instaladas](assets/screenshots/extensiones.png) |
+
+**Con un agente (MCP):** el lector se abre en un panel al lado del chat.
+
+![Un agente de terminal abre Han Thỏ en un panel lateral](assets/screenshots/mcp.png)
+
+<sub>Capturas generadas desde la propia TUI con `python tools/screenshots.py`; la página del lector
+es un dibujo de ejemplo.</sub>
 
 ## Requisitos
 
