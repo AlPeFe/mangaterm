@@ -145,7 +145,7 @@ async fn graphql<T: DeserializeOwned>(query: &str, variables: Value, token: Opti
                 LIMITER.back_off(Duration::from_secs(attempt as u64 + 1)).await;
                 continue;
             }
-            Err(e) => return Err(e).context("no se ha podido conectar con AniList"),
+            Err(e) => return Err(e).context(tr!("no se ha podido conectar con AniList", "couldn't reach AniList")),
         };
         let status = resp.status();
         let header = |name: &str| resp.headers().get(name).and_then(|v| v.to_str().ok()).and_then(|v| v.parse::<u64>().ok());
@@ -153,7 +153,10 @@ async fn graphql<T: DeserializeOwned>(query: &str, variables: Value, token: Opti
         if status.as_u16() == 429 || status.is_server_error() {
             let wait = header("Retry-After").unwrap_or(5 * (attempt as u64 + 1)).min(120);
             if attempt == MAX_RETRIES {
-                bail!("AniList ha pedido esperar (HTTP {status}); prueba dentro de un rato");
+                bail!(trf!(
+                    "AniList ha pedido esperar (HTTP {status}); prueba dentro de un rato",
+                    "AniList asked us to wait (HTTP {status}); try again in a while"
+                ));
             }
             LIMITER.back_off(Duration::from_secs(wait)).await;
             continue;
@@ -169,16 +172,19 @@ async fn graphql<T: DeserializeOwned>(query: &str, variables: Value, token: Opti
                 LIMITER.back_off(Duration::from_secs(attempt as u64 + 1)).await;
                 continue;
             }
-            Err(e) => return Err(e).context("respuesta inválida de AniList"),
+            Err(e) => return Err(e).context(tr!("respuesta inválida de AniList", "invalid response from AniList")),
         };
         if let Some(err) = value["errors"].as_array().and_then(|e| e.first()) {
-            let msg = err["message"].as_str().unwrap_or("error desconocido");
+            let msg = err["message"].as_str().unwrap_or(tr!("error desconocido", "unknown error"));
             if status.as_u16() == 401 || msg.contains("Invalid token") {
-                bail!("el token de AniList ha caducado o no es válido; vuelve a ejecutar `hantho anilist login`");
+                bail!(tr!(
+                    "el token de AniList ha caducado o no es válido; vuelve a ejecutar `hantho anilist login`",
+                    "the AniList token has expired or is invalid; run `hantho anilist login` again"
+                ));
             }
             bail!("AniList: {msg}");
         }
-        return serde_json::from_value(value["data"].clone()).context("formato inesperado de AniList");
+        return serde_json::from_value(value["data"].clone()).context(tr!("formato inesperado de AniList", "unexpected format from AniList"));
     }
     unreachable!()
 }

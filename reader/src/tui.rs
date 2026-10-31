@@ -355,7 +355,7 @@ impl App {
             host: None,
             sources: Vec::new(),
             screen: Screen::Home,
-            status: "cargando extensiones…".into(),
+            status: tr!("cargando extensiones…", "loading extensions…").into(),
             quit: false,
             clear: false,
             generation: 0,
@@ -473,10 +473,10 @@ impl App {
             Msg::Key(key) => self.on_key(key),
             Msg::Resize => self.clear = true,
             Msg::HostReady(Ok((host, sources, errors))) => {
-                self.status = format!("{} fuentes listas", sources.len())
-                    + &if errors > 0 { format!(" ({errors} extensiones no han cargado)") } else { String::new() };
+                self.status = trf!("{} fuentes listas", "{} sources ready", sources.len())
+                    + &if errors > 0 { trf!(" ({errors} extensiones no han cargado)", " ({errors} extensions failed to load)") } else { String::new() };
                 if sources.is_empty() {
-                    self.status = "no hay extensiones: añádelas desde «Añadir extensiones» en el menú".into();
+                    self.status = tr!("no hay extensiones: añádelas desde «Añadir extensiones» en el menú", "no extensions yet: add them from “Add extensions” in the menu").into();
                 }
                 self.host = Some(host);
                 self.sources = sources;
@@ -488,7 +488,7 @@ impl App {
                         }
                         None => {
                             self.pending_chapter = None;
-                            self.status = format!("la fuente {} no está instalada", target.source_name);
+                            self.status = trf!("la fuente {} no está instalada", "source {} isn't installed", target.source_name);
                         }
                     }
                 }
@@ -496,7 +496,7 @@ impl App {
                     self.start_search();
                 }
             }
-            Msg::HostReady(Err(e)) => self.status = format!("error iniciando ext-host: {e}"),
+            Msg::HostReady(Err(e)) => self.status = trf!("error iniciando ext-host: {e}", "error starting ext-host: {e}"),
             Msg::Search(generation, ev) => {
                 if generation == self.search_gen {
                     self.on_search_event(ev)
@@ -507,7 +507,7 @@ impl App {
                     // Si es un favorito, posicionarse en el último capítulo leído
                     let last = self.current_favorite().and_then(|f| f.last_read.clone());
                     let index = last.and_then(|l| d.chapters.iter().position(|c| c.url == l.chapter_url));
-                    self.status = format!("{} capítulos", d.chapters.len());
+                    self.status = trf!("{} capítulos", "{} chapters", d.chapters.len());
                     self.details = Some(d);
                     self.chapter_filter.clear();
                     self.chapter_input = None;
@@ -528,7 +528,7 @@ impl App {
             Msg::Pages(generation, res) if generation == self.generation => {
                 let Some(r) = self.reader.as_mut() else { return };
                 match res {
-                    Ok(pages) if pages.is_empty() => r.error = Some("el capítulo no tiene páginas".into()),
+                    Ok(pages) if pages.is_empty() => r.error = Some(tr!("el capítulo no tiene páginas", "this chapter has no pages").into()),
                     Ok(pages) => {
                         // "Continuar" pudo fijar una página antes de saber cuántas hay
                         r.page = r.page.min(pages.len() - 1);
@@ -567,7 +567,7 @@ impl App {
             Msg::Details(..) | Msg::Pages(..) | Msg::Image(..) | Msg::Encoded(..) => {}
             Msg::AnilistMatches(res) if self.screen == Screen::AnilistPick => match res {
                 Ok(list) if list.is_empty() => {
-                    self.status = "AniList no ha encontrado ese título".into();
+                    self.status = tr!("AniList no ha encontrado ese título", "AniList didn't find that title").into();
                     self.screen = Screen::Manga;
                 }
                 Ok(list) => {
@@ -587,17 +587,17 @@ impl App {
                 let n = installed.len();
                 self.sources.extend(sources);
                 self.installed = crate::ext::list();
-                self.backup_report.push(format!("✓ {n} extensiones instaladas y cargadas"));
+                self.backup_report.push(trf!("✓ {n} extensiones instaladas y cargadas", "✓ {n} extensions installed and loaded"));
                 for e in errors {
                     self.backup_report.push(format!("✕ {e}"));
                 }
-                self.status = "importación terminada ✿".into();
+                self.status = tr!("importación terminada ✿", "import finished ✿").into();
             }
             Msg::Catalog(res) => {
                 self.add.loading = false;
                 match res {
                     Ok(cat) => {
-                        self.status = format!("{} extensiones en {} repositorios", cat.len(), self.add.repos.len());
+                        self.status = trf!("{} extensiones en {} repositorios", "{} extensions in {} repositories", cat.len(), self.add.repos.len());
                         self.add.catalog = Some(cat);
                         self.add.reselect();
                     }
@@ -610,7 +610,7 @@ impl App {
                     Ok((url, n)) => {
                         self.add.repo_input = None;
                         self.open_add_extensions();
-                        self.status = format!("✓ repositorio añadido: {n} extensiones · {url}");
+                        self.status = trf!("✓ repositorio añadido: {n} extensiones · {url}", "✓ repository added: {n} extensions · {url}");
                     }
                     Err(e) => self.status = format!("✕ {e}"),
                 }
@@ -619,7 +619,7 @@ impl App {
                 self.add.busy.remove(&pkg);
                 match res {
                     Ok((ext, sources)) => {
-                        self.status = format!("✓ {} instalada · {} fuentes nuevas", ext.name, sources.len());
+                        self.status = trf!("✓ {} instalada · {} fuentes nuevas", "✓ {} installed · {} new sources", ext.name, sources.len());
                         self.sources.retain(|s| !sources.iter().any(|n| n.info.id == s.info.id));
                         self.sources.extend(sources);
                         self.installed = crate::ext::list();
@@ -635,7 +635,7 @@ impl App {
                 self.anilist_login = false;
                 match res {
                     Ok(creds) => {
-                        self.status = format!("✓ conectado como @{}", creds.user_name);
+                        self.status = trf!("✓ conectado como @{}", "✓ logged in as @{}", creds.user_name);
                         self.anilist_user = Some(creds.user_name);
                     }
                     Err(e) => self.status = format!("✕ AniList: {e}"),
@@ -696,7 +696,7 @@ impl App {
     fn key_anilist(&mut self, key: KeyEvent) {
         if self.anilist_login {
             if key.code == KeyCode::Esc {
-                self.status = "login en curso: si has cerrado el navegador, se cancela solo a los 5 min".into();
+                self.status = tr!("login en curso: si has cerrado el navegador, se cancela solo a los 5 min", "login in progress: if you closed the browser, it cancels itself after 5 min").into();
             }
             return;
         }
@@ -718,7 +718,7 @@ impl App {
             KeyCode::Char('o') if self.anilist_user.is_some() => {
                 Credentials::delete();
                 self.anilist_user = None;
-                self.status = "sesión de AniList cerrada".into();
+                self.status = tr!("sesión de AniList cerrada", "logged out of AniList").into();
             }
             _ => {}
         }
@@ -727,7 +727,7 @@ impl App {
     fn start_anilist_login(&mut self) {
         let Some(id) = anilist_auth::client_id() else { return };
         self.anilist_login = true;
-        self.status = "se ha abierto el navegador: aprueba el acceso en AniList".into();
+        self.status = tr!("se ha abierto el navegador: aprueba el acceso en AniList", "your browser is open: approve access on AniList").into();
         let tx = self.tx.clone();
         tokio::spawn(async move {
             let _ = tx.send(Msg::AnilistLogin(anilist_auth::login(&id).await));
@@ -812,7 +812,7 @@ impl App {
                 KeyCode::Enter if !input.trim().is_empty() && !add.loading => {
                     let url = input.clone();
                     add.loading = true;
-                    self.status = "comprobando el repositorio…".into();
+                    self.status = tr!("comprobando el repositorio…", "checking the repository…").into();
                     let tx = self.tx.clone();
                     tokio::spawn(async move {
                         let _ = tx.send(Msg::RepoAdded(catalog::add_repo(&url).await));
@@ -857,7 +857,7 @@ impl App {
             KeyCode::Char('r') => add.repo_input = Some(String::new()),
             KeyCode::Char('u') if !add.loading => {
                 add.loading = true;
-                self.status = "actualizando el catálogo…".into();
+                self.status = tr!("actualizando el catálogo…", "updating the catalog…").into();
                 let tx = self.tx.clone();
                 tokio::spawn(async move {
                     let _ = tx.send(Msg::Catalog(catalog::update().await));
@@ -879,14 +879,14 @@ impl App {
                             let ids: Vec<String> = ext.sources.iter().map(|s| s.id.to_string()).collect();
                             self.sources.retain(|s| !ids.contains(&s.info.id));
                             self.installed = crate::ext::list();
-                            self.status = format!("{} desinstalada", ext.name);
+                            self.status = trf!("{} desinstalada", "{} uninstalled", ext.name);
                         }
                         Err(e) => self.status = format!("✕ {e}"),
                     }
                     return;
                 }
                 add.busy.insert(ext.package_name.clone());
-                self.status = format!("instalando {}…", ext.name);
+                self.status = trf!("instalando {}…", "installing {}…", ext.name);
                 let (tx, host) = (self.tx.clone(), self.host.clone());
                 tokio::spawn(async move {
                     let res = async {
@@ -895,7 +895,7 @@ impl App {
                         let Some(host) = host else { return Ok((installed, Vec::new())) };
                         let (sources, errors) = host.load_all(std::slice::from_ref(&installed)).await;
                         if let Some((_, e)) = errors.first() {
-                            anyhow::bail!("{} se ha instalado, pero no carga: {}", installed.name, search::short_error(e));
+                            anyhow::bail!(trf!("{} se ha instalado, pero no carga: {}", "{} was installed but doesn't load: {}", installed.name, search::short_error(e)));
                         }
                         Ok((installed, sources))
                     }
@@ -921,7 +921,7 @@ impl App {
                 let Some(i) = self.library_state.selected().filter(|&i| i < len) else { return };
                 let fav = self.library.favorites.remove(i);
                 self.save_library();
-                self.status = format!("quitado de favoritos: {}", fav.manga.title);
+                self.status = trf!("quitado de favoritos: {}", "removed from favorites: {}", fav.manga.title);
                 self.library_state.select(if self.library.favorites.is_empty() { None } else { Some(i.min(len - 2)) });
             }
             KeyCode::Enter => {
@@ -933,8 +933,8 @@ impl App {
                         self.manga_back = Screen::Library;
                         self.open_manga(src, fav.manga, false);
                     }
-                    None if self.host.is_none() => self.status = "esperando a que carguen las extensiones…".into(),
-                    None => self.status = format!("la fuente {} no está instalada", fav.source_name),
+                    None if self.host.is_none() => self.status = tr!("esperando a que carguen las extensiones…", "waiting for extensions to load…").into(),
+                    None => self.status = trf!("la fuente {} no está instalada", "source {} isn't installed", fav.source_name),
                 }
             }
             _ => {}
@@ -1059,13 +1059,13 @@ impl App {
             KeyCode::Char('f') => self.toggle_favorite(),
             KeyCode::Char('e') => {
                 let Some(fav) = self.current_favorite_mut() else {
-                    self.status = "primero añádelo a favoritos (f)".into();
+                    self.status = tr!("primero añádelo a favoritos (f)", "add it to favorites first (f)").into();
                     return;
                 };
                 fav.status = fav.status.next();
                 let label = fav.status.label();
                 self.save_library();
-                self.status = format!("estado: {label} (pulsa 'a' para enviarlo a AniList)");
+                self.status = trf!("estado: {label} (pulsa 'a' para enviarlo a AniList)", "status: {label} (press 'a' to send it to AniList)");
             }
             KeyCode::Char('a') => self.anilist_sync(false),
             KeyCode::Char('A') => self.anilist_sync(true),
@@ -1085,7 +1085,7 @@ impl App {
                             r.page = l.page;
                         }
                     }
-                    _ => self.status = "no hay ninguna lectura que continuar".into(),
+                    _ => self.status = tr!("no hay ninguna lectura que continuar", "nothing to continue reading").into(),
                 }
             }
             KeyCode::Up | KeyCode::Char('k') => select_prev(&mut self.chapters_state),
@@ -1154,7 +1154,7 @@ impl App {
                 Some(i) => {
                     if let Some(path) = self.backup_files.get(i - 1).cloned() {
                         self.backup_busy = true;
-                        self.backup_report = vec![format!("leyendo {}…", path.display())];
+                        self.backup_report = vec![trf!("leyendo {}…", "reading {}…", path.display())];
                         let tx = self.tx.clone();
                         tokio::spawn(async move {
                             let res = async {
@@ -1229,7 +1229,7 @@ impl App {
         self.groups_state.select(None);
         self.failures.clear();
         let Some(host) = self.host.clone() else {
-            self.status = "esperando a que carguen las extensiones…".into();
+            self.status = tr!("esperando a que carguen las extensiones…", "waiting for extensions to load…").into();
             return;
         };
         self.search_gen += 1;
@@ -1295,7 +1295,7 @@ impl App {
         let generation = self.generation;
         self.details = None;
         self.chapters_state.select(None);
-        self.status = format!("cargando {} desde {}…", manga.title, source.info.name);
+        self.status = trf!("cargando {} desde {}…", "loading {} from {}…", manga.title, source.info.name);
         self.current = Some((source.clone(), manga.clone()));
         self.screen = Screen::Manga;
         let tx = self.tx.clone();
@@ -1319,7 +1319,7 @@ impl App {
 
     fn save_library(&mut self) {
         if let Err(e) = self.library.save() {
-            self.status = format!("no se ha podido guardar la biblioteca: {e}");
+            self.status = trf!("no se ha podido guardar la biblioteca: {e}", "couldn't save the library: {e}");
         }
         self.library_mtime = mtime(&paths::library_file());
     }
@@ -1356,7 +1356,7 @@ impl App {
         }
         let added = self.library.toggle(&src.info.id, &src.info.name, &src.info.lang, &full);
         self.save_library();
-        self.status = if added { "★ añadido a favoritos".into() } else { "quitado de favoritos".into() };
+        self.status = if added { tr!("★ añadido a favoritos", "★ added to favorites").into() } else { tr!("quitado de favoritos", "removed from favorites").into() };
         if added {
             self.library_state.select(Some(self.library.favorites.len() - 1));
             // Vincular con AniList si el título coincide exactamente (en segundo plano)
@@ -1371,12 +1371,12 @@ impl App {
     fn on_auto_link(&mut self, source_id: &str, url: &str, title: &str, res: Result<Vec<Media>>) {
         let Ok(candidates) = res else { return };
         let Some(media) = anilist::best_match(title, &candidates) else {
-            self.status = "★ añadido a favoritos · para vincularlo con AniList pulsa 'a'".into();
+            self.status = tr!("★ añadido a favoritos · para vincularlo con AniList pulsa 'a'", "★ added to favorites · press 'a' to link it to AniList").into();
             return;
         };
         let Some(fav) = self.library.get_mut(source_id, url).filter(|f| f.anilist.is_none()) else { return };
         fav.anilist = Some(AniListLink { media_id: media.id, title: media.display_title(), synced_progress: None, synced_status: None, synced_at: None });
-        self.status = format!("★ añadido a favoritos y vinculado con «{}» en AniList", media.display_title());
+        self.status = trf!("★ añadido a favoritos y vinculado con «{}» en AniList", "★ added to favorites and linked to “{}” on AniList", media.display_title());
         self.save_library();
         self.auto_sync(source_id, url);
     }
@@ -1384,18 +1384,18 @@ impl App {
     /// Sincroniza el favorito actual con AniList. La primera vez (o con `relink`) pide elegir la obra.
     fn anilist_sync(&mut self, relink: bool) {
         if Credentials::load().is_none() {
-            self.status = "conecta tu cuenta de AniList (tecla l)".into();
+            self.status = tr!("conecta tu cuenta de AniList (tecla l)", "connect your AniList account (key l)").into();
             self.screen = Screen::AniList;
             return;
         }
         let Some(fav) = self.current_favorite().cloned() else {
-            self.status = "primero añádelo a favoritos (f)".into();
+            self.status = tr!("primero añádelo a favoritos (f)", "add it to favorites first (f)").into();
             return;
         };
         match fav.anilist.filter(|_| !relink) {
             Some(link) => {
                 let creds = Credentials::load().unwrap();
-                self.status = format!("sincronizando con AniList: {}…", link.title);
+                self.status = trf!("sincronizando con AniList: {}…", "syncing with AniList: {}…", link.title);
                 let tx = self.tx.clone();
                 let (source_id, url) = (fav.source_id.clone(), fav.manga.url.clone());
                 let (status, progress) = (fav.status.as_anilist(), fav.progress);
@@ -1430,12 +1430,12 @@ impl App {
                     link.synced_status = Some(status);
                     link.synced_at = Some(crate::library::now());
                 }
-                self.status = format!(
-                    "✓ AniList: {} · capítulo {}{}",
-                    status.label(),
-                    progress,
-                    if r.kept_remote_progress { " (AniList ya tenía más progreso; se ha conservado)" } else { "" }
-                );
+                let kept = if r.kept_remote_progress {
+                    tr!(" (AniList ya tenía más progreso; se ha conservado)", " (AniList already had more progress; kept it)")
+                } else {
+                    ""
+                };
+                self.status = trf!("✓ AniList: {} · capítulo {progress}{kept}", "✓ AniList: {} · chapter {progress}{kept}", status.label());
             }
             Err(e) => self.status = format!("✗ AniList: {e}"),
         }
@@ -1477,7 +1477,7 @@ impl App {
         self.current = Some((LoadedSource { info }, manga));
         self.screen = Screen::Manga;
         self.manga_back = Screen::Library;
-        self.status = format!("abriendo {}…", target.title);
+        self.status = trf!("abriendo {}…", "opening {}…", target.title);
         self.pending_chapter = (target.chapter != ChapterTarget::None).then(|| target.chapter.clone());
         self.pending_open = Some(target);
     }
@@ -1521,13 +1521,13 @@ impl App {
                     r.page = page;
                 }
             }
-            None => self.status = "no se ha encontrado ese capítulo".into(),
+            None => self.status = tr!("no se ha encontrado ese capítulo", "chapter not found").into(),
         }
     }
 
     fn save_reads(&mut self) {
         if let Err(e) = self.reads.save() {
-            self.status = format!("no se ha podido guardar el registro de leídos: {e}");
+            self.status = trf!("no se ha podido guardar el registro de leídos: {e}", "couldn't save the read log: {e}");
         }
         self.reads_mtime = mtime(&paths::read_file());
     }
@@ -1583,7 +1583,7 @@ impl App {
     /// Salta al capítulo con ese número (o el más cercano), quitando el filtro si hace falta.
     fn goto_chapter_number(&mut self, text: &str) {
         let Ok(target) = text.trim().replace(',', ".").parse::<f32>() else {
-            self.status = format!("«{text}» no es un número de capítulo");
+            self.status = trf!("«{text}» no es un número de capítulo", "“{text}” isn't a chapter number");
             return;
         };
         let Some(d) = &self.details else { return };
@@ -1603,7 +1603,7 @@ impl App {
                 self.select_chapter(i);
                 self.status = format!("→ {name}");
             }
-            None => self.status = "los capítulos de esta fuente no tienen número".into(),
+            None => self.status = tr!("los capítulos de esta fuente no tienen número", "this source's chapters have no numbers").into(),
         }
     }
 
@@ -1613,10 +1613,10 @@ impl App {
         let Some(chapter) = self.details.as_ref().map(|d| d.chapters[i].clone()) else { return };
         if self.reads.is_read(&key, &chapter.url) {
             self.reads.unmark(&key, &chapter.url);
-            self.status = format!("○ {} sin leer", chapter.name);
+            self.status = trf!("○ {} sin leer", "○ {} unread", chapter.name);
         } else {
             self.reads.mark(&key, &chapter);
-            self.status = format!("✓ {} leído", chapter.name);
+            self.status = trf!("✓ {} leído", "✓ {} read", chapter.name);
         }
         self.save_reads();
         self.after_manual_marks(&key);
@@ -1632,7 +1632,7 @@ impl App {
         let older: Vec<usize> = if first >= last { (i..d.chapters.len()).collect() } else { (0..=i).collect() };
         let chapters: Vec<_> = older.iter().map(|&j| d.chapters[j].clone()).collect();
         let marked = chapters.iter().filter(|c| self.reads.mark(&key, c)).count();
-        self.status = format!("✓ {marked} capítulos marcados como leídos");
+        self.status = trf!("✓ {marked} capítulos marcados como leídos", "✓ {marked} chapters marked as read");
         self.save_reads();
         self.after_manual_marks(&key);
     }
@@ -1657,9 +1657,9 @@ impl App {
         let chapters: usize = data.manga.iter().map(|m| m.chapters.len()).sum();
         self.backup_report = match backup::write_file(&data, &path) {
             Ok(()) => vec![
-                format!("✓ exportados {} favoritos y {chapters} capítulos leídos", data.manga.len()),
+                trf!("✓ exportados {} favoritos y {chapters} capítulos leídos", "✓ exported {} favorites and {chapters} read chapters", data.manga.len()),
                 format!("  {}", path.display()),
-                "  en Mihon: Más → Copia de seguridad → Restaurar".into(),
+                tr!("  en Mihon: Más → Copia de seguridad → Restaurar", "  in Mihon: More → Backup and restore → Restore").into(),
             ],
             Err(e) => vec![format!("✕ {e}")],
         };
@@ -1679,20 +1679,20 @@ impl App {
         self.save_library();
         self.save_reads();
         self.backup_report = vec![
-            format!("✓ {} favoritos nuevos · {} ya estaban", s.added, s.merged),
-            format!("✓ {} capítulos marcados como leídos", s.chapters_read),
-            format!("✓ {} vinculados con AniList", s.anilist_links),
+            trf!("✓ {} favoritos nuevos · {} ya estaban", "✓ {} new favorites · {} already there", s.added, s.merged),
+            trf!("✓ {} capítulos marcados como leídos", "✓ {} chapters marked as read", s.chapters_read),
+            trf!("✓ {} vinculados con AniList", "✓ {} linked to AniList", s.anilist_links),
         ];
         if !s.unknown_sources.is_empty() {
-            self.backup_report.push(format!("! sin extensión en tus repositorios: {}", s.unknown_sources.join(", ")));
+            self.backup_report.push(trf!("! sin extensión en tus repositorios: {}", "! no extension in your repositories: {}", s.unknown_sources.join(", ")));
         }
         let (Some(host), false) = (self.host.clone(), s.needed_extensions.is_empty()) else {
             self.backup_busy = false;
-            self.status = "importación terminada ✿".into();
+            self.status = tr!("importación terminada ✿", "import finished ✿").into();
             return;
         };
         let names: Vec<_> = s.needed_extensions.iter().map(|e| e.name.clone()).collect();
-        self.backup_report.push(format!("instalando {} extensiones: {}…", names.len(), names.join(", ")));
+        self.backup_report.push(trf!("instalando {} extensiones: {}…", "installing {} extensions: {}…", names.len(), names.join(", ")));
         let tx = self.tx.clone();
         tokio::spawn(async move {
             let (mut ok, mut errors) = (Vec::new(), Vec::new());
@@ -1846,28 +1846,28 @@ impl App {
     fn menu_items(&self) -> Vec<MenuItem> {
         let favs = self.library.favorites.len();
         let pending = self.library.favorites.iter().filter(|f| f.needs_sync()).count();
-        let sources = if !self.sources.is_empty() { format!("{} fuentes", self.sources.len()) } else { "cargando…".into() };
+        let sources = if !self.sources.is_empty() { trf!("{} fuentes", "{} sources", self.sources.len()) } else { tr!("cargando…", "loading…").into() };
         let anilist = match &self.anilist_user {
-            Some(name) if pending > 0 => format!("@{name} · {pending} sin sincronizar"),
+            Some(name) if pending > 0 => trf!("@{name} · {pending} sin sincronizar", "@{name} · {pending} not synced"),
             Some(name) => format!("@{name}"),
-            None => "sin sesión".into(),
+            None => tr!("sin sesión", "not logged in").into(),
         };
         vec![
-            MenuItem { icon: "♡", label: "Biblioteca", detail: format!("{favs} favoritos") },
-            MenuItem { icon: "⌕", label: "Buscar", detail: sources },
-            MenuItem { icon: "✦", label: "Extensiones", detail: format!("{} instaladas", self.installed.len()) },
+            MenuItem { icon: "♡", label: tr!("Biblioteca", "Library"), detail: trf!("{favs} favoritos", "{favs} favorites") },
+            MenuItem { icon: "⌕", label: tr!("Buscar", "Search"), detail: sources },
+            MenuItem { icon: "✦", label: tr!("Extensiones", "Extensions"), detail: trf!("{} instaladas", "{} installed", self.installed.len()) },
             MenuItem {
                 icon: "✚",
-                label: "Añadir extensiones",
+                label: tr!("Añadir extensiones", "Add extensions"),
                 detail: match self.add.repos.len() {
-                    0 => "sin repositorios".into(),
-                    1 => "1 repositorio".into(),
-                    n => format!("{n} repositorios"),
+                    0 => tr!("sin repositorios", "no repositories").into(),
+                    1 => tr!("1 repositorio", "1 repository").into(),
+                    n => trf!("{n} repositorios", "{n} repositories"),
                 },
             },
             MenuItem { icon: "☁", label: "AniList", detail: anilist },
-            MenuItem { icon: "⇄", label: "Backup Mihon", detail: "importar / exportar".into() },
-            MenuItem { icon: "✕", label: "Salir", detail: String::new() },
+            MenuItem { icon: "⇄", label: tr!("Backup Mihon", "Mihon backup"), detail: tr!("importar / exportar", "import / export").into() },
+            MenuItem { icon: "✕", label: tr!("Salir", "Quit"), detail: String::new() },
         ]
     }
 
@@ -1876,18 +1876,18 @@ impl App {
         let footer = if self.host.is_none() && self.sources.is_empty() {
             Line::from(vec![
                 Span::raw(theme::spinner(self.tick)).fg(PINK),
-                Span::raw(" cargando extensiones…").fg(MUTED),
+                Span::raw(tr!(" cargando extensiones…", " loading extensions…")).fg(MUTED),
             ])
         } else {
             Line::from(vec![
                 Span::raw("↑↓").fg(PINK).bold(),
-                Span::raw(" elegir  ").fg(MUTED),
+                Span::raw(tr!(" elegir  ", " choose  ")).fg(MUTED),
                 Span::raw("enter").fg(PINK).bold(),
-                Span::raw(" abrir  ").fg(MUTED),
+                Span::raw(tr!(" abrir  ", " open  ")).fg(MUTED),
                 Span::raw("1-7").fg(PINK).bold(),
-                Span::raw(" atajos  ").fg(MUTED),
+                Span::raw(tr!(" atajos  ", " shortcuts  ")).fg(MUTED),
                 Span::raw("q").fg(PINK).bold(),
-                Span::raw(" salir").fg(MUTED),
+                Span::raw(tr!(" salir", " quit")).fg(MUTED),
             ])
         };
         self.home.draw(f, &items, footer);
@@ -1895,18 +1895,18 @@ impl App {
 
     fn draw_library(&mut self, f: &mut Frame) {
         let [main, status_area] = Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(f.area());
-        let title = format!("♡ biblioteca · {}", self.library.favorites.len());
+        let title = trf!("♡ biblioteca · {}", "♡ library · {}", self.library.favorites.len());
         if self.library.favorites.is_empty() {
             let msg = vec![
                 Line::raw(""),
-                Line::from("todavía no tienes favoritos").fg(TEXT).centered(),
+                Line::from(tr!("todavía no tienes favoritos", "you don't have any favorites yet")).fg(TEXT).centered(),
                 Line::raw(""),
                 Line::from(vec![
-                    Span::raw("busca un manga con ").fg(MUTED),
+                    Span::raw(tr!("busca un manga con ", "search for a manga with ")).fg(MUTED),
                     Span::raw("/").fg(PINK).bold(),
-                    Span::raw(", ábrelo y pulsa ").fg(MUTED),
+                    Span::raw(tr!(", ábrelo y pulsa ", ", open it and press ")).fg(MUTED),
                     Span::raw("f").fg(PINK).bold(),
-                    Span::raw(" para guardarlo aquí ✿").fg(MUTED),
+                    Span::raw(tr!(" para guardarlo aquí ✿", " to keep it here ✿")).fg(MUTED),
                 ])
                 .centered(),
             ];
@@ -1926,7 +1926,7 @@ impl App {
                     };
                     ListItem::new(Line::from(vec![
                         Span::raw(fav.manga.title.clone()).fg(TEXT),
-                        Span::raw(format!("  cap. {}", fav.progress)).fg(MUTED),
+                        Span::raw(trf!("  cap. {}", "  ch. {}", fav.progress)).fg(MUTED),
                         sync,
                     ]))
                 })
@@ -1940,7 +1940,7 @@ impl App {
                 f.render_widget(favorite_card(fav), card_area);
             }
         }
-        theme::status_bar(f, status_area, "BIBLIOTECA", &self.status, &[("enter", "abrir"), ("d", "quitar"), ("/", "buscar"), ("esc", "menú")]);
+        theme::status_bar(f, status_area, tr!("BIBLIOTECA", "LIBRARY"), &self.status, &[("enter", tr!("abrir", "open")), ("d", tr!("quitar", "remove")), ("/", tr!("buscar", "search")), ("esc", tr!("menú", "menu"))]);
     }
 
     fn draw_extensions(&mut self, f: &mut Frame) {
@@ -1951,8 +1951,8 @@ impl App {
             .map(|e| {
                 let (label, color) = match e.content_warning {
                     3 => ("nsfw", ERROR),
-                    2 => ("mixto", PEACH),
-                    _ => ("apto", MINT),
+                    2 => (tr!("mixto", "mixed"), PEACH),
+                    _ => (tr!("apto", "safe"), MINT),
                 };
                 let loaded = self.sources.iter().any(|s| s.info.name == e.name);
                 ListItem::new(Line::from(vec![
@@ -1964,14 +1964,14 @@ impl App {
                 ]))
             })
             .collect();
-        let title = format!("✦ extensiones · {} instaladas · {} fuentes cargadas", self.installed.len(), self.sources.len());
+        let title = trf!("✦ extensiones · {} instaladas · {} fuentes cargadas", "✦ extensions · {} installed · {} sources loaded", self.installed.len(), self.sources.len());
         f.render_stateful_widget(theme::highlight(List::new(items).block(theme::block_focused(&title))), main, &mut self.extensions_state);
         theme::status_bar(
             f,
             status_area,
-            "EXTENSIONES",
-            if self.installed.is_empty() { "todavía no tienes ninguna: pulsa a para añadir" } else { "a para añadir más" },
-            &[("↑↓", "mover"), ("a", "añadir"), ("esc", "menú")],
+            tr!("EXTENSIONES", "EXTENSIONS"),
+            if self.installed.is_empty() { tr!("todavía no tienes ninguna: pulsa a para añadir", "you don't have any yet: press a to add some") } else { tr!("a para añadir más", "a to add more") },
+            &[("↑↓", tr!("mover", "move")), ("a", tr!("añadir", "add")), ("esc", tr!("menú", "menu"))],
         );
     }
 
@@ -1985,18 +1985,18 @@ impl App {
         let cursor = if add.editing && tick % 16 < 9 { "▏" } else { " " };
         let mut filter = vec![
             if add.filter.is_empty() && !add.editing {
-                Span::raw("/ para filtrar por nombre").fg(FAINT).italic()
+                Span::raw(tr!("/ para filtrar por nombre", "/ to filter by name")).fg(FAINT).italic()
             } else {
                 Span::raw(add.filter.clone()).fg(TEXT)
             },
             Span::raw(cursor).fg(PINK),
-            Span::raw("   idioma: ").fg(MUTED),
-            Span::raw(add.lang.clone().unwrap_or_else(|| "todos".into())).fg(LAVENDER),
+            Span::raw(tr!("   idioma: ", "   language: ")).fg(MUTED),
+            Span::raw(add.lang.clone().unwrap_or_else(|| tr!("todos", "all").into())).fg(LAVENDER),
         ];
         if add.hide_nsfw {
-            filter.push(Span::raw("  · sin nsfw").fg(MUTED));
+            filter.push(Span::raw(tr!("  · sin nsfw", "  · no nsfw")).fg(MUTED));
         }
-        let input_block = if add.editing { theme::block_focused("⌕ filtrar") } else { theme::block("⌕ filtrar") };
+        let input_block = if add.editing { theme::block_focused(tr!("⌕ filtrar", "⌕ filter")) } else { theme::block(tr!("⌕ filtrar", "⌕ filter")) };
         f.render_widget(Paragraph::new(Line::from(filter)).block(input_block), input_area);
 
         let catalog = add.catalog.as_deref().unwrap_or_default();
@@ -2016,8 +2016,8 @@ impl App {
                 };
                 let (label, warn) = match e.content_warning {
                     3 => ("nsfw", ERROR),
-                    2 => ("mixto", PEACH),
-                    _ => ("apto", MINT),
+                    2 => (tr!("mixto", "mixed"), PEACH),
+                    _ => (tr!("apto", "safe"), MINT),
                 };
                 let langs: String = e.langs().join(",").chars().take(9).collect();
                 ListItem::new(Line::from(vec![
@@ -2031,15 +2031,15 @@ impl App {
             .collect();
         let title = match &add.catalog {
             Some(cat) => {
-                let repos = if add.repos.len() == 1 { "1 repositorio".to_string() } else { format!("{} repositorios", add.repos.len()) };
-                format!("✚ añadir extensiones · {} de {} · {repos}", view.len(), cat.len())
+                let repos = if add.repos.len() == 1 { tr!("1 repositorio", "1 repository").to_string() } else { trf!("{} repositorios", "{} repositories", add.repos.len()) };
+                trf!("✚ añadir extensiones · {} de {} · {repos}", "✚ add extensions · {} of {} · {repos}", view.len(), cat.len())
             }
-            None => "✚ añadir extensiones".into(),
+            None => tr!("✚ añadir extensiones", "✚ add extensions").into(),
         };
         f.render_stateful_widget(theme::highlight(List::new(items).block(theme::block_focused(&title))), list_area, &mut add.state);
         if add.loading && add.catalog.is_none() && add.repo_input.is_none() {
             let [center] = Layout::vertical([Constraint::Length(1)]).flex(Flex::Center).areas(list_area);
-            let msg = Line::from(vec![Span::raw(theme::spinner(tick)).fg(PINK), Span::raw(" cargando el catálogo…").fg(MUTED)]);
+            let msg = Line::from(vec![Span::raw(theme::spinner(tick)).fg(PINK), Span::raw(tr!(" cargando el catálogo…", " loading the catalog…")).fg(MUTED)]);
             f.render_widget(Paragraph::new(msg).centered(), center);
         }
 
@@ -2054,32 +2054,32 @@ impl App {
             };
             let mut lines = vec![
                 Line::raw(""),
-                Line::from("  Han Thỏ no trae extensiones: añade el repositorio que quieras usar.").fg(TEXT),
+                Line::from(tr!("  Han Thỏ no trae extensiones: añade el repositorio que quieras usar.", "  Han Thỏ ships no extensions: add the repository you want to use.")).fg(TEXT),
                 Line::raw(""),
-                Line::from("  Vale la URL de su index.pb o index.min.json, la del repo en GitHub o un").fg(MUTED),
-                Line::from("  enlace tachiyomi://add-repo. Tiene que publicar las extensiones en .jar").fg(MUTED),
-                Line::from("  (formato Keiyoushi): las que solo traen .apk no se pueden cargar.").fg(MUTED),
+                Line::from(tr!("  Vale la URL de su index.pb o index.min.json, la del repo en GitHub o un", "  Paste the URL of its index.pb or index.min.json, the GitHub repo or a")).fg(MUTED),
+                Line::from(tr!("  enlace tachiyomi://add-repo. Tiene que publicar las extensiones en .jar", "  tachiyomi://add-repo link. It has to publish extensions as .jar")).fg(MUTED),
+                Line::from(tr!("  (formato Keiyoushi): las que solo traen .apk no se pueden cargar.", "  (Keiyoushi format): .apk-only repositories can't be loaded.")).fg(MUTED),
                 Line::raw(""),
                 Line::from(vec![Span::raw("  URL: ").fg(MUTED), Span::raw(shown).fg(PINK).bold(), Span::raw(cursor).fg(PINK)]),
             ];
             if add.loading {
                 lines.push(Line::raw(""));
-                lines.push(Line::from(vec![Span::raw(format!("  {} ", theme::spinner(tick))).fg(PINK), Span::raw("comprobando…").fg(MUTED)]));
+                lines.push(Line::from(vec![Span::raw(format!("  {} ", theme::spinner(tick))).fg(PINK), Span::raw(tr!("comprobando…", "checking…")).fg(MUTED)]));
             } else if !add.repos.is_empty() {
                 lines.push(Line::raw(""));
-                lines.push(Line::from(format!("  ya tienes {} repositorios añadidos", add.repos.len())).fg(FAINT));
+                lines.push(Line::from(trf!("  ya tienes {} repositorios añadidos", "  you already have {} repositories", add.repos.len())).fg(FAINT));
             }
             f.render_widget(Clear, card);
-            f.render_widget(Paragraph::new(lines).block(theme::block_focused("✚ añadir repositorio")), card);
-            theme::status_bar(f, status_area, "EXTENSIONES", &self.status, &[("enter", "añadir"), ("esc", "cancelar")]);
+            f.render_widget(Paragraph::new(lines).block(theme::block_focused(tr!("✚ añadir repositorio", "✚ add repository"))), card);
+            theme::status_bar(f, status_area, tr!("EXTENSIONES", "EXTENSIONS"), &self.status, &[("enter", tr!("añadir", "add")), ("esc", tr!("cancelar", "cancel"))]);
             return;
         }
         let keys: &[(&str, &str)] = if add.editing {
-            &[("enter", "listo"), ("esc", "listo")]
+            &[("enter", tr!("listo", "done")), ("esc", tr!("listo", "done"))]
         } else {
-            &[("enter", "instalar/quitar"), ("/", "filtrar"), ("l", "idioma"), ("n", "nsfw"), ("r", "repo"), ("esc", "menú")]
+            &[("enter", tr!("instalar/quitar", "install/remove")), ("/", tr!("filtrar", "filter")), ("l", tr!("idioma", "language")), ("n", "nsfw"), ("r", "repo"), ("esc", tr!("menú", "menu"))]
         };
-        theme::status_bar(f, status_area, "EXTENSIONES", &self.status, keys);
+        theme::status_bar(f, status_area, tr!("EXTENSIONES", "EXTENSIONS"), &self.status, keys);
     }
 
     fn draw_anilist(&mut self, f: &mut Frame) {
@@ -2091,48 +2091,48 @@ impl App {
         let mut lines = vec![Line::raw("")];
         match &self.anilist_user {
             Some(name) => {
-                lines.push(Line::from(vec![Span::raw("  conectado como ").fg(MUTED), Span::raw(format!("@{name}")).fg(PINK).bold()]));
+                lines.push(Line::from(vec![Span::raw(tr!("  conectado como ", "  logged in as ")).fg(MUTED), Span::raw(format!("@{name}")).fg(PINK).bold()]));
                 lines.push(Line::raw(""));
-                lines.push(Line::from(vec![Span::raw("  ✓ ").fg(MINT), Span::raw(format!("{linked} favoritos vinculados")).fg(TEXT)]));
+                lines.push(Line::from(vec![Span::raw("  ✓ ").fg(MINT), Span::raw(trf!("{linked} favoritos vinculados", "{linked} favorites linked")).fg(TEXT)]));
                 let pending_line = if pending > 0 {
-                    vec![Span::raw("  ↻ ").fg(PEACH), Span::raw(format!("{pending} con cambios sin sincronizar")).fg(TEXT)]
+                    vec![Span::raw("  ↻ ").fg(PEACH), Span::raw(trf!("{pending} con cambios sin sincronizar", "{pending} with unsynced changes")).fg(TEXT)]
                 } else {
-                    vec![Span::raw("  ✓ ").fg(MINT), Span::raw("todo sincronizado").fg(TEXT)]
+                    vec![Span::raw("  ✓ ").fg(MINT), Span::raw(tr!("todo sincronizado", "everything synced")).fg(TEXT)]
                 };
                 lines.push(Line::from(pending_line));
                 lines.push(Line::raw(""));
                 lines.push(Line::from(vec![
-                    Span::raw("  para sincronizar, abre un favorito y pulsa ").fg(MUTED),
+                    Span::raw(tr!("  para sincronizar, abre un favorito y pulsa ", "  to sync, open a favorite and press ")).fg(MUTED),
                     Span::raw("a").fg(PINK).bold(),
                 ]));
             }
             None if self.anilist_login => {
                 lines.push(Line::from(vec![
                     Span::raw(format!("  {} ", theme::spinner(self.tick))).fg(PINK),
-                    Span::raw("esperando que apruebes en el navegador…").fg(TEXT),
+                    Span::raw(tr!("esperando que apruebes en el navegador…", "waiting for you to approve in the browser…")).fg(TEXT),
                 ]));
                 lines.push(Line::raw(""));
-                lines.push(Line::from("  en la página de AniList pulsa «Approve»;").fg(MUTED));
-                lines.push(Line::from("  Han Thỏ recibe la sesión solo, no hace falta copiar nada ✿").fg(MUTED));
+                lines.push(Line::from(tr!("  en la página de AniList pulsa «Approve»;", "  on the AniList page press “Approve”;")).fg(MUTED));
+                lines.push(Line::from(tr!("  Han Thỏ recibe la sesión solo, no hace falta copiar nada ✿", "  Han Thỏ gets the session by itself, nothing to copy ✿")).fg(MUTED));
             }
             None if anilist_auth::client_id().is_some() => {
-                lines.push(Line::from("  sin sesión").fg(TEXT));
+                lines.push(Line::from(tr!("  sin sesión", "  not logged in")).fg(TEXT));
                 lines.push(Line::raw(""));
                 lines.push(Line::from(vec![
-                    Span::raw("  pulsa ").fg(MUTED),
+                    Span::raw(tr!("  pulsa ", "  press ")).fg(MUTED),
                     Span::raw("l").fg(PINK).bold(),
-                    Span::raw(" para conectar tu cuenta: se abre el navegador,").fg(MUTED),
+                    Span::raw(tr!(" para conectar tu cuenta: se abre el navegador,", " to connect your account: the browser opens,")).fg(MUTED),
                 ]));
-                lines.push(Line::from("  apruebas el acceso y listo.").fg(MUTED));
+                lines.push(Line::from(tr!("  apruebas el acceso y listo.", "  you approve access and that's it.")).fg(MUTED));
             }
             None => {
                 let cursor = if self.tick % 16 < 9 { "▏" } else { " " };
-                lines.push(Line::from("  configuración única: registrar Han Thỏ en AniList").fg(TEXT));
+                lines.push(Line::from(tr!("  configuración única: registrar Han Thỏ en AniList", "  one-time setup: register Han Thỏ on AniList")).fg(TEXT));
                 lines.push(Line::raw(""));
                 lines.push(Line::from(vec![
-                    Span::raw("  1. pulsa ").fg(MUTED),
+                    Span::raw(tr!("  1. pulsa ", "  1. press ")).fg(MUTED),
                     Span::raw("d").fg(PINK).bold(),
-                    Span::raw(" (abre anilist.co/settings/developer) → Create New Client").fg(MUTED),
+                    Span::raw(tr!(" (abre anilist.co/settings/developer) → Create New Client", " (opens anilist.co/settings/developer) → Create New Client")).fg(MUTED),
                 ]));
                 lines.push(Line::from(vec![
                     Span::raw("  2. Name: ").fg(MUTED),
@@ -2140,7 +2140,7 @@ impl App {
                     Span::raw("  ·  Redirect URL: ").fg(MUTED),
                     Span::raw(anilist_auth::REDIRECT).fg(LAVENDER),
                 ]));
-                lines.push(Line::from("  3. pega aquí el ID del client y pulsa enter:").fg(MUTED));
+                lines.push(Line::from(tr!("  3. pega aquí el ID del client y pulsa enter:", "  3. paste the client ID here and press enter:")).fg(MUTED));
                 lines.push(Line::raw(""));
                 lines.push(Line::from(vec![
                     Span::raw("     ID: ").fg(MUTED),
@@ -2152,10 +2152,10 @@ impl App {
         f.render_widget(Clear, card);
         f.render_widget(Paragraph::new(lines).block(theme::block_focused("☁ anilist")), card);
         let keys: &[(&str, &str)] = match (&self.anilist_user, anilist_auth::client_id().is_some()) {
-            _ if self.anilist_login => &[("esc", "menú")],
-            (Some(_), _) => &[("l", "reconectar"), ("o", "cerrar sesión"), ("esc", "menú")],
-            (None, true) => &[("l", "conectar"), ("esc", "menú")],
-            (None, false) => &[("d", "abrir AniList"), ("enter", "guardar y conectar"), ("esc", "menú")],
+            _ if self.anilist_login => &[("esc", tr!("menú", "menu"))],
+            (Some(_), _) => &[("l", tr!("reconectar", "reconnect")), ("o", tr!("cerrar sesión", "log out")), ("esc", tr!("menú", "menu"))],
+            (None, true) => &[("l", tr!("conectar", "connect")), ("esc", tr!("menú", "menu"))],
+            (None, false) => &[("d", tr!("abrir AniList", "open AniList")), ("enter", tr!("guardar y conectar", "save and connect")), ("esc", tr!("menú", "menu"))],
         };
         theme::status_bar(f, status_area, "ANILIST", &self.status, keys);
     }
@@ -2165,30 +2165,30 @@ impl App {
         let [list_area, report_area] = Layout::vertical([Constraint::Min(6), Constraint::Length(8)]).areas(main);
         let mut items = vec![ListItem::new(Line::from(vec![
             Span::raw("⇪ ").fg(MINT),
-            Span::raw("Exportar biblioteca").fg(TEXT).bold(),
-            Span::raw(format!("  {} favoritos → Descargas (.tachibk)", self.library.favorites.len())).fg(MUTED),
+            Span::raw(tr!("Exportar biblioteca", "Export library")).fg(TEXT).bold(),
+            Span::raw(trf!("  {} favoritos → Descargas (.tachibk)", "  {} favorites → Downloads (.tachibk)", self.library.favorites.len())).fg(MUTED),
         ]))];
         for path in &self.backup_files {
             let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
             let dir = path.parent().map(|d| d.display().to_string()).unwrap_or_default();
             items.push(ListItem::new(Line::from(vec![
                 Span::raw("⇩ ").fg(LAVENDER),
-                Span::raw("Importar ").fg(MUTED),
+                Span::raw(tr!("Importar ", "Import ")).fg(MUTED),
                 Span::raw(name).fg(TEXT).bold(),
                 Span::raw(format!("  {dir}")).fg(FAINT),
             ])));
         }
         f.render_stateful_widget(
-            theme::highlight(List::new(items).block(theme::block_focused("⇄ backup de Mihon"))),
+            theme::highlight(List::new(items).block(theme::block_focused(tr!("⇄ backup de Mihon", "⇄ Mihon backup")))),
             list_area,
             &mut self.backup_state,
         );
 
         let mut lines: Vec<Line> = if self.backup_report.is_empty() {
             let hint = if self.backup_files.is_empty() {
-                "no se han encontrado backups: en Mihon, Más → Copia de seguridad → Crear, y deja el .tachibk en Descargas o Documentos (r para buscar de nuevo)"
+                tr!("no se han encontrado backups: en Mihon, Más → Copia de seguridad → Crear, y deja el .tachibk en Descargas o Documentos (r para buscar de nuevo)", "no backups found: in Mihon, More → Backup and restore → Create backup, and put the .tachibk in Downloads or Documents (r to look again)")
             } else {
-                "importar añade favoritos, capítulos leídos y vínculos con AniList; instala solas las extensiones que falten"
+                tr!("importar añade favoritos, capítulos leídos y vínculos con AniList; instala solas las extensiones que falten", "importing adds favorites, read chapters and AniList links; missing extensions get installed automatically")
             };
             vec![Line::from(hint).fg(MUTED)]
         } else {
@@ -2201,21 +2201,21 @@ impl App {
                 .collect()
         };
         if self.backup_busy {
-            lines.push(Line::from(vec![Span::raw(theme::spinner(self.tick)).fg(PINK), Span::raw(" trabajando…").fg(MUTED)]));
+            lines.push(Line::from(vec![Span::raw(theme::spinner(self.tick)).fg(PINK), Span::raw(tr!(" trabajando…", " working…")).fg(MUTED)]));
         }
-        f.render_widget(Paragraph::new(lines).wrap(Wrap { trim: true }).block(theme::block("resultado")), report_area);
-        theme::status_bar(f, status_area, "BACKUP", &self.status, &[("enter", "elegir"), ("r", "buscar archivos"), ("esc", "menú")]);
+        f.render_widget(Paragraph::new(lines).wrap(Wrap { trim: true }).block(theme::block(tr!("resultado", "result"))), report_area);
+        theme::status_bar(f, status_area, "BACKUP", &self.status, &[("enter", tr!("elegir", "choose")), ("r", tr!("buscar archivos", "find files")), ("esc", tr!("menú", "menu"))]);
     }
 
     fn draw_anilist_pick(&mut self, f: &mut Frame) {
         let [list_area, status_area] = Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(f.area());
         let manga = self.current.as_ref().map(|(_, m)| m.title.clone()).unwrap_or_default();
-        let title = format!("☁ ¿cuál es «{manga}» en AniList?");
+        let title = trf!("☁ ¿cuál es «{manga}» en AniList?", "☁ which one is “{manga}” on AniList?");
         match &self.anilist_matches {
             None => f.render_widget(
                 Paragraph::new(Line::from(vec![
                     Span::raw(theme::spinner(self.tick)).fg(PINK),
-                    Span::raw(" buscando en AniList…").fg(MUTED),
+                    Span::raw(tr!(" buscando en AniList…", " searching AniList…")).fg(MUTED),
                 ]))
                 .block(theme::block_focused(&title)),
                 list_area,
@@ -2225,7 +2225,7 @@ impl App {
                     .iter()
                     .map(|m| {
                         let year = m.start_date.as_ref().and_then(|d| d.year).map(|y| y.to_string()).unwrap_or_default();
-                        let chapters = m.chapters.map(|c| format!(" · {c} caps")).unwrap_or_default();
+                        let chapters = m.chapters.map(|c| trf!(" · {c} caps", " · {c} ch.")).unwrap_or_default();
                         let english = m.title.english.clone().filter(|e| Some(e) != m.title.romaji.as_ref());
                         ListItem::new(Line::from(vec![
                             Span::raw(m.display_title()).fg(TEXT).bold(),
@@ -2241,7 +2241,7 @@ impl App {
                 );
             }
         }
-        theme::status_bar(f, status_area, "ANILIST", "elige la obra que quieres vincular", &[("enter", "vincular y sincronizar"), ("esc", "cancelar")]);
+        theme::status_bar(f, status_area, "ANILIST", tr!("elige la obra que quieres vincular", "pick the entry you want to link"), &[("enter", tr!("vincular y sincronizar", "link and sync")), ("esc", tr!("cancelar", "cancel"))]);
     }
 
     fn draw_search(&mut self, f: &mut Frame) {
@@ -2249,12 +2249,12 @@ impl App {
             Layout::vertical([Constraint::Length(3), Constraint::Min(1), Constraint::Length(1)]).areas(f.area());
 
         let input = if self.input.is_empty() && self.editing {
-            Line::from(vec![Span::raw("▏").fg(PINK), Span::raw("¿qué te apetece leer hoy?").fg(FAINT).italic()])
+            Line::from(vec![Span::raw("▏").fg(PINK), Span::raw(tr!("¿qué te apetece leer hoy?", "what do you feel like reading today?")).fg(FAINT).italic()])
         } else {
             let cursor = if self.editing && self.tick % 16 < 9 { "▏" } else { " " };
             Line::from(vec![Span::raw(self.input.clone()).fg(TEXT), Span::raw(cursor).fg(PINK)])
         };
-        let input_block = if self.editing { theme::block_focused("⌕ buscar") } else { theme::block("⌕ buscar") };
+        let input_block = if self.editing { theme::block_focused(tr!("⌕ buscar", "⌕ search")) } else { theme::block(tr!("⌕ buscar", "⌕ search")) };
         f.render_widget(Paragraph::new(input).block(input_block), input_area);
 
         let items: Vec<ListItem> = self
@@ -2275,25 +2275,25 @@ impl App {
             })
             .collect();
         let title = if self.query.is_empty() {
-            "resultados".to_string()
+            tr!("resultados", "results").to_string()
         } else {
-            format!("«{}» · {} títulos", self.query, self.groups.len())
+            trf!("«{}» · {} títulos", "“{}” · {} titles", self.query, self.groups.len())
         };
         let list_block = if self.editing { theme::block(&title) } else { theme::block_focused(&title) };
         f.render_stateful_widget(theme::highlight(List::new(items).block(list_block)), list_area, &mut self.groups_state);
 
         let mut status = self.status.clone();
         if self.pending > 0 {
-            status = format!("{} buscando… faltan {} fuentes", theme::spinner(self.tick), self.pending);
+            status = trf!("{} buscando… faltan {} fuentes", "{} searching… {} sources to go", theme::spinner(self.tick), self.pending);
         } else if !self.query.is_empty() && !self.failures.is_empty() {
-            status = format!("{status} · {} fuentes han fallado", self.failures.len());
+            status = trf!("{status} · {} fuentes han fallado", "{status} · {} sources failed", self.failures.len());
         }
         let keys: &[(&str, &str)] = if self.editing {
-            &[("enter", "buscar"), ("↓", "resultados"), ("esc", "menú")]
+            &[("enter", tr!("buscar", "search")), ("↓", tr!("resultados", "results")), ("esc", tr!("menú", "menu"))]
         } else {
-            &[("enter", "abrir"), ("/", "editar"), ("b", "biblioteca"), ("esc", "menú")]
+            &[("enter", tr!("abrir", "open")), ("/", tr!("editar", "edit")), ("b", tr!("biblioteca", "library")), ("esc", tr!("menú", "menu"))]
         };
-        theme::status_bar(f, status_area, "BUSCAR", &status, keys);
+        theme::status_bar(f, status_area, tr!("BUSCAR", "SEARCH"), &status, keys);
     }
 
     fn draw_sources(&mut self, f: &mut Frame) {
@@ -2310,9 +2310,9 @@ impl App {
                 ]))
             })
             .collect();
-        let title = format!("{} · en {} fuentes", g.title, g.entries.len());
+        let title = trf!("{} · en {} fuentes", "{} · in {} sources", g.title, g.entries.len());
         f.render_stateful_widget(theme::highlight(List::new(items).block(theme::block_focused(&title))), list_area, &mut self.sources_state);
-        theme::status_bar(f, status_area, "FUENTE", "elige de dónde leerlo", &[("enter", "abrir"), ("esc", "volver")]);
+        theme::status_bar(f, status_area, tr!("FUENTE", "SOURCE"), tr!("elige de dónde leerlo", "choose where to read it"), &[("enter", tr!("abrir", "open")), ("esc", tr!("volver", "back"))]);
     }
 
     fn draw_manga(&mut self, f: &mut Frame) {
@@ -2339,23 +2339,23 @@ impl App {
         match self.current_favorite() {
             Some(fav) => {
                 let anilist = match &fav.anilist {
-                    None => Span::raw("  ☁ sin vincular").fg(FAINT),
-                    Some(_) if fav.needs_sync() => Span::raw("  ☁ ↻ cambios sin sincronizar").fg(PEACH),
+                    None => Span::raw(tr!("  ☁ sin vincular", "  ☁ not linked")).fg(FAINT),
+                    Some(_) if fav.needs_sync() => Span::raw(tr!("  ☁ ↻ cambios sin sincronizar", "  ☁ ↻ unsynced changes")).fg(PEACH),
                     Some(link) => Span::raw(format!("  ☁ ✓ {}", link.title)).fg(MINT),
                 };
                 lines.push(Line::from(vec![
-                    Span::raw(" ♥ favorito ").bg(PINK).fg(ON_PINK).bold(),
+                    Span::raw(tr!(" ♥ favorito ", " ♥ favorite ")).bg(PINK).fg(ON_PINK).bold(),
                     Span::raw(" "),
                     Span::raw(format!(" {} ", fav.status.label())).bg(theme::status_color(fav.status)).fg(ON_PINK),
-                    Span::raw(format!("  leídos: {}", fav.progress)).fg(TEXT),
+                    Span::raw(trf!("  leídos: {}", "  read: {}", fav.progress)).fg(TEXT),
                     anilist,
                 ]));
             }
             None => lines.push(Line::from(vec![
                 Span::raw("♡ ").fg(FAINT),
-                Span::raw("no está en favoritos · ").fg(MUTED),
+                Span::raw(tr!("no está en favoritos · ", "not in favorites · ")).fg(MUTED),
                 Span::raw("f").fg(PINK).bold(),
-                Span::raw(" para añadirlo").fg(MUTED),
+                Span::raw(tr!(" para añadirlo", " to add it")).fg(MUTED),
             ])),
         }
         if let Some(desc) = &m.description {
@@ -2369,9 +2369,9 @@ impl App {
             None => f.render_widget(
                 Paragraph::new(Line::from(vec![
                     Span::raw(theme::spinner(self.tick)).fg(PINK),
-                    Span::raw(" cargando capítulos…").fg(MUTED),
+                    Span::raw(tr!(" cargando capítulos…", " loading chapters…")).fg(MUTED),
                 ]))
-                .block(theme::block_focused("capítulos")),
+                .block(theme::block_focused(tr!("capítulos", "chapters"))),
                 list_area,
             ),
             Some(d) => {
@@ -2397,18 +2397,18 @@ impl App {
                     })
                     .collect();
                 let read_count = d.chapters.iter().filter(|c| self.reads.is_read(&read_key, &c.url)).count();
-                let mut title = format!("capítulos · {} · {read_count} leídos", d.chapters.len());
+                let mut title = trf!("capítulos · {} · {read_count} leídos", "chapters · {} · {read_count} read", d.chapters.len());
                 if self.chapters_reversed {
-                    title += " · ↑ viejos primero";
+                    title += tr!(" · ↑ viejos primero", " · ↑ oldest first");
                 }
                 match &self.chapter_input {
                     Some(input) => {
-                        let label = if input.kind == ChapterInputKind::Filter { "filtrar" } else { "ir al capítulo" };
+                        let label = if input.kind == ChapterInputKind::Filter { tr!("filtrar", "filter") } else { tr!("ir al capítulo", "go to chapter") };
                         let cursor = if self.tick % 16 < 9 { "▏" } else { " " };
                         title = format!("{label}: {}{cursor}", input.text);
                     }
                     None if !self.chapter_filter.is_empty() => {
-                        title += &format!(" · filtro «{}» ({})", self.chapter_filter, self.chapter_view.len());
+                        title += &trf!(" · filtro «{}» ({})", " · filter “{}” ({})", self.chapter_filter, self.chapter_view.len());
                     }
                     None => {}
                 }
@@ -2425,9 +2425,9 @@ impl App {
             "MANGA",
             &self.status,
             &if self.chapter_input.is_some() {
-                vec![("enter", "aceptar"), ("esc", "cancelar")]
+                vec![("enter", tr!("aceptar", "ok")), ("esc", tr!("cancelar", "cancel"))]
             } else {
-                vec![("enter", "leer"), ("m/M", "leído"), ("/", "filtrar"), ("#", "ir a"), ("o", "orden"), ("c", "seguir"), ("f", "fav"), ("a", "anilist")]
+                vec![("enter", tr!("leer", "read")), ("m/M", tr!("leído", "read")), ("/", tr!("filtrar", "filter")), ("#", tr!("ir a", "go to")), ("o", tr!("orden", "order")), ("c", tr!("seguir", "continue")), ("f", "fav"), ("a", "anilist")]
             },
         );
     }
@@ -2457,8 +2457,8 @@ impl App {
         } else if let (true, Some(page)) = (ready, page) {
             if let Some((_, enc)) = page.encoded.as_ref().filter(|_| sixel) {
                 // La imagen la escribe flush_sixel() después del frame; aquí solo la info
-                let kind = if enc.gray { "gris" } else { "color" };
-                info += &format!("  · sixel {kind} {}×{} · celda {}×{}", enc.out.0, enc.out.1, font.0, font.1);
+                let kind = if enc.gray { tr!("gris", "gray") } else { "color" };
+                info += &trf!("  · sixel {kind} {}×{} · celda {}×{}", "  · sixel {kind} {}×{} · cell {}×{}", enc.out.0, enc.out.1, font.0, font.1);
             } else if let Some(proto) = page.proto.as_mut() {
                 let resize = ratatui_image::Resize::Fit(Some(FilterType::Lanczos3));
                 // Centrar horizontalmente: la imagen se ajusta al alto y suele sobrar ancho
@@ -2469,14 +2469,14 @@ impl App {
                 info += &format!("  · {:?}", self.picker.protocol_type());
             }
         } else {
-            let msg = if r.pages.is_empty() { " cargando páginas…" } else { " cargando imagen…" };
+            let msg = if r.pages.is_empty() { tr!(" cargando páginas…", " loading pages…") } else { tr!(" cargando imagen…", " loading image…") };
             let [center] = Layout::vertical([Constraint::Length(1)]).flex(Flex::Center).areas(image_area);
             f.render_widget(
                 Paragraph::new(Line::from(vec![Span::raw(theme::spinner(tick)).fg(PINK), Span::raw(msg).fg(MUTED)])).centered(),
                 center,
             );
         }
-        theme::status_bar(f, status_area, "LEYENDO", &info, &[("←→", "página"), ("n/p", "capítulo"), ("esc", "volver")]);
+        theme::status_bar(f, status_area, tr!("LEYENDO", "READING"), &info, &[("←→", tr!("página", "page")), ("n/p", tr!("capítulo", "chapter")), ("esc", tr!("volver", "back"))]);
     }
 }
 
@@ -2489,28 +2489,28 @@ fn favorite_card(fav: &crate::library::Favorite) -> Paragraph<'_> {
         Line::raw(""),
         Line::from(vec![
             Span::raw(format!(" {} ", fav.status.label())).bg(theme::status_color(fav.status)).fg(ON_PINK).bold(),
-            Span::raw(format!("  {} capítulos leídos", fav.progress)).fg(TEXT),
+            Span::raw(trf!("  {} capítulos leídos", "  {} chapters read", fav.progress)).fg(TEXT),
         ]),
     ];
     if let Some(last) = &fav.last_read {
         lines.push(Line::raw(""));
         lines.push(Line::from(vec![
-            Span::raw("▸ seguir en ").fg(MUTED),
+            Span::raw(tr!("▸ seguir en ", "▸ continue at ")).fg(MUTED),
             Span::raw(last.chapter_name.clone()).fg(TEXT),
-            Span::raw(format!(" · pág. {}", last.page + 1)).fg(MUTED),
+            Span::raw(trf!(" · pág. {}", " · p. {}", last.page + 1)).fg(MUTED),
         ]));
     }
     lines.push(Line::raw(""));
     lines.push(match &fav.anilist {
-        None => Line::from("☁ sin vincular a AniList").fg(FAINT),
-        Some(link) if fav.needs_sync() => Line::from(format!("☁ {} · ↻ cambios sin sincronizar", link.title)).fg(PEACH),
-        Some(link) => Line::from(format!("☁ {} · ✓ sincronizado", link.title)).fg(MINT),
+        None => Line::from(tr!("☁ sin vincular a AniList", "☁ not linked to AniList")).fg(FAINT),
+        Some(link) if fav.needs_sync() => Line::from(trf!("☁ {} · ↻ cambios sin sincronizar", "☁ {} · ↻ unsynced changes", link.title)).fg(PEACH),
+        Some(link) => Line::from(trf!("☁ {} · ✓ sincronizado", "☁ {} · ✓ synced", link.title)).fg(MINT),
     });
     if let Some(desc) = fav.manga.description.as_ref().filter(|d| !d.is_empty()) {
         lines.push(Line::raw(""));
         lines.push(Line::from(desc.replace(['\n', '\r'], " ")).fg(MUTED));
     }
-    Paragraph::new(lines).wrap(Wrap { trim: true }).block(theme::block("ficha").padding(ratatui::widgets::Padding::horizontal(1)))
+    Paragraph::new(lines).wrap(Wrap { trim: true }).block(theme::block(tr!("ficha", "details")).padding(ratatui::widgets::Padding::horizontal(1)))
 }
 
 // ───────────────────────────── helpers ─────────────────────────────

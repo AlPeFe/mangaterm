@@ -50,7 +50,7 @@ impl Host {
             .stderr(Stdio::from(log))
             .kill_on_drop(true)
             .spawn()
-            .context("no se ha podido lanzar java (¿JAVA_HOME?)")?;
+            .context(tr!("no se ha podido lanzar java (¿JAVA_HOME?)", "couldn't start java (JAVA_HOME?)"))?;
 
         let stdout = child.stdout.take().unwrap();
         let pending: Pending = Arc::default();
@@ -63,7 +63,7 @@ impl Host {
                 let result = if msg["ok"].as_bool() == Some(true) {
                     Ok(msg["result"].clone())
                 } else {
-                    Err(anyhow!("{}", msg["error"].as_str().unwrap_or("error desconocido")))
+                    Err(anyhow!("{}", msg["error"].as_str().unwrap_or(tr!("error desconocido", "unknown error"))))
                 };
                 if let Some(tx) = reader_pending.lock().unwrap().remove(&id) {
                     let _ = tx.send(result);
@@ -71,7 +71,7 @@ impl Host {
             }
             // El host murió: fallar todo lo pendiente en vez de colgarse
             for (_, tx) in reader_pending.lock().unwrap().drain() {
-                let _ = tx.send(Err(anyhow!("ext-host terminó (ver {})", paths::host_log().display())));
+                let _ = tx.send(Err(anyhow!(trf!("ext-host terminó (ver {})", "ext-host exited (see {})", paths::host_log().display()))));
             }
         });
 
@@ -97,7 +97,7 @@ impl Host {
             stdin.write_all(line.as_bytes()).await?;
             stdin.flush().await?;
         }
-        let value = rx.await.map_err(|_| anyhow!("ext-host no respondió"))??;
+        let value = rx.await.map_err(|_| anyhow!(tr!("ext-host no respondió", "ext-host didn't respond")))??;
         Ok(serde_json::from_value(value)?)
     }
 
@@ -183,5 +183,8 @@ fn find_host_lib() -> Result<PathBuf> {
             }
         }
     }
-    bail!("no se ha encontrado ext-host; compílalo con `gradlew installDist` o define HANTHO_HOST_LIB")
+    bail!(tr!(
+        "no se ha encontrado ext-host; compílalo con `gradlew installDist` o define HANTHO_HOST_LIB",
+        "ext-host not found; build it with `gradlew installDist` or set HANTHO_HOST_LIB"
+    ))
 }

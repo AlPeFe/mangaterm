@@ -36,7 +36,7 @@ pub fn global(host: Arc<Host>, sources: Vec<LoadedSource>, query: String) -> mps
                         SearchEvent::Results { source, mangas: page.mangas }
                     }
                     Ok(Err(e)) => SearchEvent::Failed { source, error: short_error(&e.to_string()) },
-                    Err(_) => SearchEvent::Failed { source, error: "tiempo de espera agotado".into() },
+                    Err(_) => SearchEvent::Failed { source, error: tr!("tiempo de espera agotado", "timed out").into() },
                 };
                 let _ = tx.send(event);
             })

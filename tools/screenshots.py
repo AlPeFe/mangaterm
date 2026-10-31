@@ -178,7 +178,7 @@ def main():
         tmp = Path(tmp)
         page_path = tmp / "page.png"
         sample_page(page_path)
-        env = dict(os.environ, HANTHO_PREVIEW_DIR=str(tmp), HANTHO_PREVIEW_PAGE=str(page_path), HANTHO_HOME=str(tmp / "home"))
+        env = dict(os.environ, HANTHO_LANG="es", HANTHO_PREVIEW_DIR=str(tmp), HANTHO_PREVIEW_PAGE=str(page_path), HANTHO_HOME=str(tmp / "home"))
         subprocess.run(
             ["cargo", "test", "--release", "--target-dir", "target/check", "screens_preview", "--", "--exact", "tui::tests::screens_preview"],
             cwd=ROOT / "reader", env=env, check=True,

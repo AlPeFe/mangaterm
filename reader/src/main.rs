@@ -1,3 +1,5 @@
+#[macro_use]
+mod i18n;
 mod anilist;
 mod anilist_auth;
 mod backup;
@@ -22,9 +24,8 @@ use clap::{Parser, Subcommand};
 use host::Host;
 use search::SearchEvent;
 
-/// Han Thỏ: lector de manga para la terminal, con extensiones de Mihon (formato Keiyoushi) y sync con AniList.
 #[derive(Parser)]
-#[command(name = "hantho", version)]
+#[command(name = "hantho", version, about = tr!("Han Thỏ: lector de manga para la terminal, con extensiones de Mihon (formato Keiyoushi) y sync con AniList.", "Han Thỏ: a terminal manga reader with Mihon extensions (Keiyoushi format) and AniList sync."))]
 struct Cli {
     #[command(subcommand)]
     cmd: Option<Cmd>,
@@ -32,25 +33,25 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Cmd {
-    /// Busca en todas las fuentes instaladas (sin TUI)
+    #[command(about = tr!("Busca en todas las fuentes instaladas (sin TUI)", "Search every installed source (no TUI)"))]
     Search {
         query: String,
-        /// Solo fuentes de este idioma (p. ej. es)
+        #[arg(help = tr!("Solo fuentes de este idioma (p. ej. es)", "Only sources in this language (e.g. en)"))]
         #[arg(long)]
         lang: Option<String>,
     },
-    /// Gestiona extensiones
+    #[command(about = tr!("Gestiona extensiones", "Manage extensions"))]
     #[command(subcommand)]
     Ext(ExtCmd),
-    /// Cuenta de AniList
+    #[command(about = tr!("Cuenta de AniList", "AniList account"))]
     #[command(subcommand)]
     Anilist(AnilistCmd),
-    /// Backups en formato de Mihon (.tachibk)
+    #[command(about = tr!("Backups en formato de Mihon (.tachibk)", "Backups in Mihon format (.tachibk)"))]
     #[command(subcommand)]
     Backup(BackupCmd),
-    /// Abre directamente un manga (o un capítulo) de tu biblioteca
+    #[command(about = tr!("Abre directamente un manga (o un capítulo) de tu biblioteca", "Open a manga (or a chapter) from your library directly"))]
     Open {
-        /// Título de un favorito (o usa --source y --url)
+        #[arg(help = tr!("Título de un favorito (o usa --source y --url)", "Title of a favorite (or use --source and --url)"))]
         query: Option<String>,
         #[arg(long)]
         source: Option<String>,
@@ -58,29 +59,29 @@ enum Cmd {
         url: Option<String>,
         #[arg(long)]
         title: Option<String>,
-        /// Número de capítulo
+        #[arg(help = tr!("Número de capítulo", "Chapter number"))]
         #[arg(long)]
         chapter: Option<f32>,
         #[arg(long)]
         chapter_url: Option<String>,
-        /// Seguir donde te quedaste
+        #[arg(help = tr!("Seguir donde te quedaste", "Continue where you left off"))]
         #[arg(long = "continue")]
         cont: bool,
-        /// Abrirlo en un panel al lado (Windows Terminal, tmux, WezTerm, zellij, kitty) en vez de aquí
+        #[arg(help = tr!("Abrirlo en un panel al lado (Windows Terminal, tmux, WezTerm, zellij, kitty) en vez de aquí", "Open it in a side pane (Windows Terminal, tmux, WezTerm, zellij, kitty) instead of here"))]
         #[arg(long)]
         side: bool,
     },
-    /// Servidor MCP por stdio, para usar Han Thỏ desde Claude Code, Codex y otros agentes
+    #[command(about = tr!("Servidor MCP por stdio, para usar Han Thỏ desde Claude Code, Codex y otros agentes", "MCP server over stdio, to use Han Thỏ from Claude Code, Codex and other agents"))]
     Mcp,
 }
 
 #[derive(Subcommand)]
 enum BackupCmd {
-    /// Importa favoritos, capítulos leídos y vínculos con AniList; instala las extensiones que falten
+    #[command(about = tr!("Importa favoritos, capítulos leídos y vínculos con AniList; instala las extensiones que falten", "Import favorites, read chapters and AniList links; installs missing extensions"))]
     Import { file: std::path::PathBuf },
-    /// Exporta la biblioteca a un .tachibk que Mihon puede restaurar
+    #[command(about = tr!("Exporta la biblioteca a un .tachibk que Mihon puede restaurar", "Export the library to a .tachibk that Mihon can restore"))]
     Export {
-        /// Archivo de salida (por defecto, hantho_<fecha>.tachibk en Descargas)
+        #[arg(help = tr!("Archivo de salida (por defecto, hantho_<fecha>.tachibk en Descargas)", "Output file (default: hantho_<date>.tachibk in Downloads)"))]
         #[arg(long)]
         out: Option<std::path::PathBuf>,
     },
@@ -88,35 +89,35 @@ enum BackupCmd {
 
 #[derive(Subcommand)]
 enum AnilistCmd {
-    /// Inicia sesión: abre el navegador, apruebas y listo (también desde la TUI con `l`)
+    #[command(about = tr!("Inicia sesión: abre el navegador, apruebas y listo (también desde la TUI con `l`)", "Log in: opens the browser, you approve and that's it (also from the TUI with `l`)"))]
     Login {
-        /// Client ID de AniList, si este binario no trae uno (se guarda para la próxima)
+        #[arg(help = tr!("Client ID de AniList, si este binario no trae uno (se guarda para la próxima)", "AniList client ID, if this binary doesn't ship one (saved for next time)"))]
         #[arg(long)]
         client_id: Option<String>,
     },
-    /// Muestra la sesión actual
+    #[command(about = tr!("Muestra la sesión actual", "Show the current session"))]
     Status,
-    /// Borra el token guardado
+    #[command(about = tr!("Borra el token guardado", "Delete the saved token"))]
     Logout,
 }
 
 #[derive(Subcommand)]
 enum ExtCmd {
-    /// Gestiona los repositorios de extensiones (Han Thỏ no trae ninguno)
+    #[command(about = tr!("Gestiona los repositorios de extensiones (Han Thỏ no trae ninguno)", "Manage extension repositories (Han Thỏ ships none)"))]
     #[command(subcommand)]
     Repo(RepoCmd),
-    /// Descarga la última versión del catálogo de tus repositorios
+    #[command(about = tr!("Descarga la última versión del catálogo de tus repositorios", "Download the latest catalog from your repositories"))]
     Update,
-    /// Busca extensiones en el catálogo
+    #[command(about = tr!("Busca extensiones en el catálogo", "Search the extension catalog"))]
     Find {
         query: Option<String>,
         #[arg(long)]
         lang: Option<String>,
-        /// Excluir extensiones NSFW
+        #[arg(help = tr!("Excluir extensiones NSFW", "Exclude NSFW extensions"))]
         #[arg(long)]
         sfw: bool,
     },
-    /// Instala extensiones (por nombre o paquete); con --lang instala todas las de ese idioma
+    #[command(about = tr!("Instala extensiones (por nombre o paquete); con --lang instala todas las de ese idioma", "Install extensions (by name or package); with --lang installs every one in that language"))]
     Install {
         names: Vec<String>,
         #[arg(long)]
@@ -124,19 +125,19 @@ enum ExtCmd {
         #[arg(long)]
         sfw: bool,
     },
-    /// Desinstala una extensión por paquete
+    #[command(about = tr!("Desinstala una extensión por paquete", "Uninstall an extension by package"))]
     Remove { pkg: String },
-    /// Lista las extensiones instaladas
+    #[command(about = tr!("Lista las extensiones instaladas", "List installed extensions"))]
     List,
 }
 
 #[derive(Subcommand)]
 enum RepoCmd {
-    /// Añade un repositorio (URL de su index.pb, de index.min.json o del repo en GitHub)
+    #[command(about = tr!("Añade un repositorio (URL de su index.pb, de index.min.json o del repo en GitHub)", "Add a repository (URL of its index.pb, index.min.json or the GitHub repo)"))]
     Add { url: String },
-    /// Quita un repositorio
+    #[command(about = tr!("Quita un repositorio", "Remove a repository"))]
     Remove { url: String },
-    /// Lista los repositorios añadidos
+    #[command(about = tr!("Lista los repositorios añadidos", "List added repositories"))]
     List,
 }
 
@@ -160,7 +161,7 @@ async fn main() -> Result<()> {
             let lib = library::Library::load();
             let target = launch::resolve(&lib, query.as_deref(), source.as_deref(), url.as_deref(), title.as_deref(), target_chapter)?;
             if side {
-                println!("✿ abierto en {}", launch::launch(&target, launch::Placement::Side)?);
+                println!("{}", trf!("✿ abierto en {}", "✿ opened in {}", launch::launch(&target, launch::Placement::Side)?));
                 Ok(())
             } else {
                 tui::run(Some(target)).await
@@ -185,14 +186,17 @@ async fn backup_cmd(cmd: BackupCmd) -> Result<()> {
             let s = backup::import(&data, &catalog, &installed, &mut lib, &mut log);
             lib.save()?;
             log.save()?;
-            println!("✓ {} favoritos nuevos · {} ya estaban", s.added, s.merged);
-            println!("✓ {} capítulos marcados como leídos · {} vinculados con AniList", s.chapters_read, s.anilist_links);
+            println!("{}", trf!("✓ {} favoritos nuevos · {} ya estaban", "✓ {} new favorites · {} already there", s.added, s.merged));
+            println!(
+                "{}",
+                trf!("✓ {} capítulos marcados como leídos · {} vinculados con AniList", "✓ {} chapters marked as read · {} linked to AniList", s.chapters_read, s.anilist_links)
+            );
             if !s.unknown_sources.is_empty() {
-                println!("! sin extensión en tus repositorios: {}", s.unknown_sources.join(", "));
+                println!("{}", trf!("! sin extensión en tus repositorios: {}", "! no extension in your repositories: {}", s.unknown_sources.join(", ")));
             }
             for e in &s.needed_extensions {
                 match ext::install(e).await {
-                    Ok(i) => println!("✓ extensión instalada: {}", i.name),
+                    Ok(i) => println!("{}", trf!("✓ extensión instalada: {}", "✓ extension installed: {}", i.name)),
                     Err(err) => eprintln!("✕ {}: {err}", e.name),
                 }
             }
@@ -202,7 +206,10 @@ async fn backup_cmd(cmd: BackupCmd) -> Result<()> {
             let data = backup::export(&lib, &log);
             backup::write_file(&data, &path)?;
             let chapters: usize = data.manga.iter().map(|m| m.chapters.len()).sum();
-            println!("✓ {} favoritos y {chapters} capítulos leídos → {}", data.manga.len(), path.display());
+            println!(
+                "{}",
+                trf!("✓ {} favoritos y {chapters} capítulos leídos → {}", "✓ {} favorites and {chapters} read chapters → {}", data.manga.len(), path.display())
+            );
         }
     }
     Ok(())
@@ -215,29 +222,33 @@ async fn anilist_cmd(cmd: AnilistCmd) -> Result<()> {
                 anilist_auth::save_client_id(&id)?;
             }
             let Some(id) = anilist_auth::client_id() else {
-                bail!(
+                bail!(trf!(
                     "falta registrar Han Thỏ en AniList (una sola vez):\n  \
+                     1. {} → Create New Client\n  \
+                     2. Name: Han Thỏ · Redirect URL: {}\n  \
+                     3. hantho anilist login --client-id <ID>",
+                    "Han Thỏ needs to be registered on AniList (once):\n  \
                      1. {} → Create New Client\n  \
                      2. Name: Han Thỏ · Redirect URL: {}\n  \
                      3. hantho anilist login --client-id <ID>",
                     anilist_auth::DEVELOPER_URL,
                     anilist_auth::REDIRECT
-                );
+                ));
             };
-            println!("✿ se ha abierto el navegador: aprueba el acceso en AniList y vuelve aquí…");
+            println!("{}", tr!("✿ se ha abierto el navegador: aprueba el acceso en AniList y vuelve aquí…", "✿ your browser is open: approve access on AniList and come back here…"));
             let creds = anilist_auth::login(&id).await?;
-            println!("✓ conectado como @{}", creds.user_name);
+            println!("{}", trf!("✓ conectado como @{}", "✓ logged in as @{}", creds.user_name));
         }
         AnilistCmd::Status => match anilist::Credentials::load() {
             Some(c) => match anilist::viewer(&c.token).await {
-                Ok((_, name)) => println!("✓ conectado como {name}"),
-                Err(e) => println!("✗ {} (token guardado, pero {e})", c.user_name),
+                Ok((_, name)) => println!("{}", trf!("✓ conectado como {name}", "✓ logged in as {name}")),
+                Err(e) => println!("{}", trf!("✗ {} (token guardado, pero {e})", "✗ {} (token saved, but {e})", c.user_name)),
             },
-            None => println!("sin sesión; usa `hantho anilist login`"),
+            None => println!("{}", tr!("sin sesión; usa `hantho anilist login`", "not logged in; use `hantho anilist login`")),
         },
         AnilistCmd::Logout => {
             anilist::Credentials::delete();
-            println!("sesión cerrada");
+            println!("{}", tr!("sesión cerrada", "logged out"));
         }
     }
     Ok(())
@@ -246,7 +257,10 @@ async fn anilist_cmd(cmd: AnilistCmd) -> Result<()> {
 async fn cli_search(query: String, lang: Option<String>) -> Result<()> {
     let installed = ext::list();
     if installed.is_empty() {
-        bail!("no hay extensiones instaladas: añade un repositorio con `hantho ext repo add <url>` e instálalas con `hantho ext install`");
+        bail!(tr!(
+            "no hay extensiones instaladas: añade un repositorio con `hantho ext repo add <url>` e instálalas con `hantho ext install`",
+            "no extensions installed: add a repository with `hantho ext repo add <url>` and install them with `hantho ext install`"
+        ));
     }
     let started = std::time::Instant::now();
     let host = Host::spawn().await?;
@@ -257,13 +271,16 @@ async fn cli_search(query: String, lang: Option<String>) -> Result<()> {
     if let Some(lang) = &lang {
         sources.retain(|s| &s.info.lang == lang || s.info.lang == "all");
     }
-    eprintln!("{} fuentes listas en {:.1}s; buscando…", sources.len(), started.elapsed().as_secs_f32());
+    eprintln!(
+        "{}",
+        trf!("{} fuentes listas en {:.1}s; buscando…", "{} sources ready in {:.1}s; searching…", sources.len(), started.elapsed().as_secs_f32())
+    );
 
     let mut rx = search::global(host, sources, query);
     while let Some(ev) = rx.recv().await {
         match ev {
             SearchEvent::Results { source, mangas } if !mangas.is_empty() => {
-                println!("── {} ({}) · {} resultados", source.info.name, source.info.lang, mangas.len());
+                println!("{}", trf!("── {} ({}) · {} resultados", "── {} ({}) · {} results", source.info.name, source.info.lang, mangas.len()));
                 for m in mangas.iter().take(5) {
                     println!("   {}", m.title);
                 }
@@ -273,7 +290,7 @@ async fn cli_search(query: String, lang: Option<String>) -> Result<()> {
             SearchEvent::Done => break,
         }
     }
-    eprintln!("listo en {:.1}s", started.elapsed().as_secs_f32());
+    eprintln!("{}", trf!("listo en {:.1}s", "done in {:.1}s", started.elapsed().as_secs_f32()));
     Ok(())
 }
 
@@ -284,18 +301,18 @@ async fn ext_cmd(cmd: ExtCmd) -> Result<()> {
     match cmd {
         ExtCmd::Repo(RepoCmd::Add { url }) => {
             let (url, n) = catalog::add_repo(&url).await?;
-            println!("✓ repositorio añadido: {url} ({n} extensiones)");
+            println!("{}", trf!("✓ repositorio añadido: {url} ({n} extensiones)", "✓ repository added: {url} ({n} extensions)"));
         }
         ExtCmd::Repo(RepoCmd::Remove { url }) => {
             if !catalog::remove_repo(&url)? {
-                bail!("{url} no está en tus repositorios");
+                bail!(trf!("{url} no está en tus repositorios", "{url} isn't one of your repositories"));
             }
-            println!("repositorio quitado (las extensiones instaladas siguen funcionando)");
+            println!("{}", tr!("repositorio quitado (las extensiones instaladas siguen funcionando)", "repository removed (installed extensions keep working)"));
         }
         ExtCmd::Repo(RepoCmd::List) => {
             let repos = catalog::repos();
             if repos.is_empty() {
-                println!("no hay repositorios: añade uno con `hantho ext repo add <url>`");
+                println!("{}", tr!("no hay repositorios: añade uno con `hantho ext repo add <url>`", "no repositories yet: add one with `hantho ext repo add <url>`"));
             }
             for r in repos {
                 println!("{r}");
@@ -303,7 +320,7 @@ async fn ext_cmd(cmd: ExtCmd) -> Result<()> {
         }
         ExtCmd::Update => {
             let exts = catalog::update().await?;
-            println!("catálogo actualizado: {} extensiones", exts.len());
+            println!("{}", trf!("catálogo actualizado: {} extensiones", "catalog updated: {} extensions", exts.len()));
         }
         ExtCmd::Find { query, lang, sfw } => {
             let catalog = catalog::load().await?;
@@ -322,10 +339,10 @@ async fn ext_cmd(cmd: ExtCmd) -> Result<()> {
             let mut targets: Vec<&catalog::Extension> = Vec::new();
             for name in &names {
                 match ext::find(&catalog, name).as_slice() {
-                    [] => eprintln!("✗ '{name}' no está en el catálogo"),
+                    [] => eprintln!("{}", trf!("✗ '{name}' no está en el catálogo", "✗ '{name}' isn't in the catalog")),
                     [one] => targets.push(one),
                     many => {
-                        eprintln!("'{name}' es ambiguo:");
+                        eprintln!("{}", trf!("'{name}' es ambiguo:", "'{name}' is ambiguous:"));
                         for e in many.iter().take(10) {
                             eprintln!("   {} ({})", e.name, e.package_name);
                         }
@@ -351,9 +368,9 @@ async fn ext_cmd(cmd: ExtCmd) -> Result<()> {
         }
         ExtCmd::Remove { pkg } => {
             if ext::uninstall(&pkg)? {
-                println!("desinstalada {pkg}");
+                println!("{}", trf!("desinstalada {pkg}", "uninstalled {pkg}"));
             } else {
-                bail!("{pkg} no está instalada");
+                bail!(trf!("{pkg} no está instalada", "{pkg} isn't installed"));
             }
         }
         ExtCmd::List => {

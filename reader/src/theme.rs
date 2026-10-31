@@ -81,7 +81,7 @@ pub fn status_bar(f: &mut Frame, area: Rect, badge: &str, message: &str, keys: &
     let pad = msg_width.saturating_sub(message.chars().count());
 
     let mut spans = vec![Span::raw(badge).bg(PINK).fg(ON_PINK).bold(), Span::raw(" "), Span::raw(message).fg(TEXT)];
-    spans.push(Span::raw(" ".repeat(pad)));
+    spans.push(Span::raw(" ".repeat(pad + usize::from(hints_width > 0))));
     spans.extend(hints);
     f.render_widget(Paragraph::new(Line::from(spans)), area);
 }

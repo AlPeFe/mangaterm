@@ -50,6 +50,7 @@ que tú añadas), muestra las páginas como imágenes de verdad
 - 🤖 **Servidor MCP**: Claude Code, Codex y otros agentes pueden buscar, consultar tu biblioteca, marcar
   capítulos y abrir el lector en un panel al lado del chat ([`docs/mcp.md`](docs/mcp.md)).
 - 🐢 **Respetuoso con los servicios**: rate limiting y caché tanto para AniList como para las fuentes.
+- 🌐 **Español e inglés**: usa el idioma del sistema (español si está en español; inglés en cualquier otro caso).
 - 🐧🪟 **Linux y Windows**, probado en CI en ambos.
 
 ## Capturas
@@ -184,6 +185,7 @@ En todas las listas funcionan `↑`/`↓` y `k`/`j`; `esc` o `q` vuelve atrás; 
 
 | Variable | Para qué |
 |---|---|
+| `HANTHO_LANG` | Idioma: `es` o `en` (por defecto, el del sistema: español si está en español, inglés si no) |
 | `HANTHO_HOME` | Carpeta de datos (por defecto `~/.hantho`) |
 | `HANTHO_PROTOCOL` | Forzar `sixel`, `kitty`, `iterm2` o `halfblocks` |
 | `HANTHO_FONT` | Tamaño de celda en píxeles, p. ej. `10x20`, si la detección falla |

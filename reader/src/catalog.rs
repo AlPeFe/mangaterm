@@ -115,7 +115,7 @@ pub fn normalize_repo(input: &str) -> Result<String> {
         url = url[i + 4..].replace("%3A", ":").replace("%2F", "/");
     }
     if !url.starts_with("https://") && !url.starts_with("http://") {
-        bail!("no parece una URL: {input}");
+        bail!(trf!("no parece una URL: {input}", "that doesn't look like a URL: {input}"));
     }
     let url = url.trim_end_matches('/');
     if url.ends_with(".pb") {
@@ -141,9 +141,12 @@ fn cache_path(url: &str) -> PathBuf {
 
 async fn fetch(url: &str) -> Result<Vec<Extension>> {
     let bytes = reqwest::get(url).await?.error_for_status()?.bytes().await?;
-    let exts = decode(&bytes).with_context(|| format!("{url} no es un índice de extensiones válido"))?;
+    let exts = decode(&bytes).with_context(|| trf!("{url} no es un índice de extensiones válido", "{url} isn't a valid extension index"))?;
     if !exts.iter().any(|e| e.jar_url().is_some()) {
-        bail!("{url} no publica extensiones en .jar (Han Thỏ no puede cargar .apk)");
+        bail!(trf!(
+            "{url} no publica extensiones en .jar (Han Thỏ no puede cargar .apk)",
+            "{url} doesn't publish extensions as .jar (Han Thỏ can't load .apk)"
+        ));
     }
     std::fs::create_dir_all(crate::paths::repos_dir())?;
     std::fs::write(cache_path(url), &bytes)?;
@@ -175,13 +178,18 @@ pub fn remove_repo(input: &str) -> Result<bool> {
     Ok(true)
 }
 
-const NO_REPOS: &str = "no hay repositorios de extensiones: añade uno en «Añadir extensiones» o con `hantho ext repo add <url>`";
+fn no_repos() -> &'static str {
+    tr!(
+        "no hay repositorios de extensiones: añade uno en «Añadir extensiones» o con `hantho ext repo add <url>`",
+        "no extension repositories yet: add one in “Add extensions” or with `hantho ext repo add <url>`"
+    )
+}
 
 /// Descarga de nuevo el índice de todos los repositorios.
 pub async fn update() -> Result<Vec<Extension>> {
     let repos = repos();
     if repos.is_empty() {
-        bail!(NO_REPOS);
+        bail!(no_repos());
     }
     let mut lists = Vec::new();
     for url in &repos {
@@ -194,7 +202,7 @@ pub async fn update() -> Result<Vec<Extension>> {
 pub async fn load() -> Result<Vec<Extension>> {
     let repos = repos();
     if repos.is_empty() {
-        bail!(NO_REPOS);
+        bail!(no_repos());
     }
     let mut lists = Vec::new();
     for url in &repos {
@@ -225,8 +233,8 @@ fn merge(lists: Vec<Vec<Extension>>) -> Vec<Extension> {
 
 fn decode(gz: &[u8]) -> Result<Vec<Extension>> {
     let mut raw = Vec::new();
-    GzDecoder::new(gz).read_to_end(&mut raw).context("index.pb no es gzip válido")?;
-    let index = Index::decode(raw.as_slice()).context("index.pb no es un protobuf válido")?;
+    GzDecoder::new(gz).read_to_end(&mut raw).context(tr!("index.pb no es gzip válido", "index.pb isn't valid gzip"))?;
+    let index = Index::decode(raw.as_slice()).context(tr!("index.pb no es un protobuf válido", "index.pb isn't valid protobuf"))?;
     Ok(index.extension_list.map(|l| l.extensions).unwrap_or_default())
 }
 

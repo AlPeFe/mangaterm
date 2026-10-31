@@ -154,7 +154,7 @@ impl Home {
         }
 
         let tagline = Line::from(vec![
-            Span::raw("manga en tu terminal").fg(mix(theme::FAINT, MUTED, reveal)).italic(),
+            Span::raw(tr!("manga en tu terminal", "manga in your terminal")).fg(mix(theme::FAINT, MUTED, reveal)).italic(),
             Span::raw("  ♡").fg(mix(theme::FAINT, PINK, ((t * 2.0).sin() + 1.0) / 2.0)),
         ]);
         f.render_widget(Paragraph::new(tagline).centered(), tag_area);
@@ -164,7 +164,7 @@ impl Home {
         let menu_w = 46.min(area.width.saturating_sub(4));
         let [menu_area] = Layout::horizontal([Constraint::Length(menu_w)]).flex(Flex::Center).areas(menu_area);
         f.render_widget(Clear, menu_area);
-        f.render_widget(theme::block("menú").border_style(Style::new().fg(mix(theme::FAINT, PINK_DIM, fade))), menu_area);
+        f.render_widget(theme::block(tr!("menú", "menu")).border_style(Style::new().fg(mix(theme::FAINT, PINK_DIM, fade))), menu_area);
         let inner = menu_area.inner(ratatui::layout::Margin::new(1, 1));
         for (i, item) in items.iter().enumerate() {
             let row = Rect::new(inner.x, inner.y + i as u16, inner.width, 1);

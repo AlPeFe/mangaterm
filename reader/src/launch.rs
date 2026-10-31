@@ -21,7 +21,7 @@ pub fn resolve(library: &Library, query: Option<&str>, source: Option<&str>, url
         });
     }
     let Some(query) = query.map(str::trim).filter(|q| !q.is_empty()) else {
-        bail!("indica un título de tu biblioteca, o --source y --url");
+        bail!(tr!("indica un título de tu biblioteca, o --source y --url", "give a title from your library, or --source and --url"));
     };
     let q = crate::search::normalize(query);
     let mut matches: Vec<_> = library.favorites.iter().filter(|f| crate::search::normalize(&f.manga.title).contains(&q)).collect();
@@ -36,7 +36,10 @@ pub fn resolve(library: &Library, query: Option<&str>, source: Option<&str>, url
             title: fav.manga.title.clone(),
             chapter,
         }),
-        None => bail!("«{query}» no está en tu biblioteca; búscalo y añádelo a favoritos, o pasa --source y --url"),
+        None => bail!(trf!(
+            "«{query}» no está en tu biblioteca; búscalo y añádelo a favoritos, o pasa --source y --url",
+            "“{query}” isn't in your library; search for it and add it to favorites, or pass --source and --url"
+        )),
     }
 }
 
@@ -82,7 +85,7 @@ pub fn launch(target: &OpenTarget, placement: Placement) -> Result<String> {
             cmd.args(["-w", "0", "split-pane", "--vertical", "--size", "0.5", "--title", "Han Thỏ", "--", &exe]);
             cmd.args(args.iter().map(|a| wt_escape(a)));
             if spawn(cmd, &mut tried, "wt") {
-                return Ok("panel lateral de Windows Terminal".into());
+                return Ok(tr!("panel lateral de Windows Terminal", "Windows Terminal side pane").into());
             }
         }
         if env("TMUX") {
@@ -90,21 +93,21 @@ pub fn launch(target: &OpenTarget, placement: Placement) -> Result<String> {
             let mut cmd = Command::new("tmux");
             cmd.args(["split-window", "-h", "-l", "50%", &line]);
             if spawn(cmd, &mut tried, "tmux") {
-                return Ok("panel lateral de tmux".into());
+                return Ok(tr!("panel lateral de tmux", "tmux side pane").into());
             }
         }
         if env("WEZTERM_PANE") {
             let mut cmd = Command::new("wezterm");
             cmd.args(["cli", "split-pane", "--right", "--percent", "50", "--", &exe]).args(&args);
             if spawn(cmd, &mut tried, "wezterm") {
-                return Ok("panel lateral de WezTerm".into());
+                return Ok(tr!("panel lateral de WezTerm", "WezTerm side pane").into());
             }
         }
         if env("ZELLIJ") {
             let mut cmd = Command::new("zellij");
             cmd.args(["run", "--direction", "right", "--name", "Han Thỏ", "--", &exe]).args(&args);
             if spawn(cmd, &mut tried, "zellij") {
-                return Ok("panel lateral de zellij".into());
+                return Ok(tr!("panel lateral de zellij", "zellij side pane").into());
             }
         }
         if env("KITTY_WINDOW_ID") {
@@ -112,7 +115,7 @@ pub fn launch(target: &OpenTarget, placement: Placement) -> Result<String> {
             let mut cmd = Command::new("kitty");
             cmd.args(["@", "launch", "--location=vsplit", "--cwd=current", "--title", "Han Thỏ", &exe]).args(&args);
             if spawn(cmd, &mut tried, "kitty") {
-                return Ok("panel lateral de kitty".into());
+                return Ok(tr!("panel lateral de kitty", "kitty side pane").into());
             }
         }
     }
@@ -123,12 +126,16 @@ pub fn launch(target: &OpenTarget, placement: Placement) -> Result<String> {
         let mut cmd = Command::new("wt.exe");
         cmd.args(["-w", "new", "--title", "Han Thỏ", "--", &exe]).args(args.iter().map(|a| wt_escape(a)));
         if spawn(cmd, &mut tried, "wt") {
-            return Ok("ventana nueva de Windows Terminal".into());
+            return Ok(tr!("ventana nueva de Windows Terminal", "new Windows Terminal window").into());
         }
         let mut cmd = Command::new("cmd");
         cmd.args(["/C", "start", "Han Thỏ", &exe]).args(&args);
         if spawn(cmd, &mut tried, "cmd") {
-            return Ok("ventana nueva de consola (sin Windows Terminal no hay imágenes Sixel)".into());
+            return Ok(tr!(
+                "ventana nueva de consola (sin Windows Terminal no hay imágenes Sixel)",
+                "new console window (no Sixel images without Windows Terminal)"
+            )
+            .into());
         }
     }
     #[cfg(not(windows))]
@@ -137,16 +144,17 @@ pub fn launch(target: &OpenTarget, placement: Placement) -> Result<String> {
             let mut cmd = Command::new(term);
             cmd.args(flag.split_whitespace()).arg(&exe).args(&args);
             if spawn(cmd, &mut tried, term) {
-                return Ok(format!("ventana nueva de {term}"));
+                return Ok(trf!("ventana nueva de {term}", "new {term} window"));
             }
         }
     }
-    bail!(
+    bail!(trf!(
         "no se ha podido abrir una terminal (probado: {}). Ábrelo a mano con: {} {}",
-        if tried.is_empty() { "nada".to_string() } else { tried.join(", ") },
+        "couldn't open a terminal (tried: {}). Open it yourself with: {} {}",
+        if tried.is_empty() { tr!("nada", "nothing").to_string() } else { tried.join(", ") },
         exe,
         args.iter().map(|a| shell_quote(a)).collect::<Vec<_>>().join(" ")
-    )
+    ))
 }
 
 fn spawn(mut cmd: Command, tried: &mut Vec<String>, name: &str) -> bool {

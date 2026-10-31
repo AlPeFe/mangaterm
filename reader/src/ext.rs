@@ -36,7 +36,7 @@ fn save(list: &[Installed]) -> Result<()> {
 }
 
 pub async fn install(ext: &Extension) -> Result<Installed> {
-    let Some(url) = ext.jar_url() else { bail!("{} no publica un .jar", ext.name) };
+    let Some(url) = ext.jar_url() else { bail!(trf!("{} no publica un .jar", "{} doesn't publish a .jar", ext.name)) };
     let bytes = reqwest::get(url).await?.error_for_status()?.bytes().await?;
     let item = Installed {
         pkg: ext.package_name.clone(),

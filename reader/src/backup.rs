@@ -147,16 +147,16 @@ fn status_to_mihon(s: Status) -> i32 {
 }
 
 pub fn read_file(path: &Path) -> Result<Backup> {
-    let raw = std::fs::read(path).with_context(|| format!("no se ha podido leer {}", path.display()))?;
+    let raw = std::fs::read(path).with_context(|| trf!("no se ha podido leer {}", "couldn't read {}", path.display()))?;
     // Mihon siempre comprime, pero los backups viejos o editados pueden venir sin gzip
     let bytes = if raw.starts_with(&[0x1f, 0x8b]) {
         let mut out = Vec::new();
-        GzDecoder::new(raw.as_slice()).read_to_end(&mut out).context("el archivo está dañado (gzip)")?;
+        GzDecoder::new(raw.as_slice()).read_to_end(&mut out).context(tr!("el archivo está dañado (gzip)", "the file is corrupted (gzip)"))?;
         out
     } else {
         raw
     };
-    Backup::decode(bytes.as_slice()).context("no es un backup de Mihon (.tachibk) válido")
+    Backup::decode(bytes.as_slice()).context(tr!("no es un backup de Mihon (.tachibk) válido", "not a valid Mihon backup (.tachibk)"))
 }
 
 #[derive(Debug, Default)]
@@ -201,7 +201,7 @@ pub fn import(backup: &Backup, catalog: &[Extension], installed: &[String], libr
                 (src.name.clone(), src.language.clone())
             }
             None => {
-                let name = source_names.get(&m.source).map_or_else(|| format!("fuente {}", m.source), |n| n.to_string());
+                let name = source_names.get(&m.source).map_or_else(|| trf!("fuente {}", "source {}", m.source), |n| n.to_string());
                 if !summary.unknown_sources.contains(&name) {
                     summary.unknown_sources.push(name.clone());
                 }
@@ -345,7 +345,7 @@ pub fn write_file(backup: &Backup, path: &Path) -> Result<()> {
     }
     let mut gz = GzEncoder::new(Vec::new(), flate2::Compression::default());
     gz.write_all(&backup.encode_to_vec())?;
-    std::fs::write(path, gz.finish()?).with_context(|| format!("no se ha podido escribir {}", path.display()))?;
+    std::fs::write(path, gz.finish()?).with_context(|| trf!("no se ha podido escribir {}", "couldn't write {}", path.display()))?;
     Ok(())
 }
 

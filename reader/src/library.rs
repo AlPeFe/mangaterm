@@ -23,12 +23,12 @@ pub enum Status {
 impl Status {
     pub fn label(self) -> &'static str {
         match self {
-            Status::Current => "Leyendo",
-            Status::Planning => "Planeado",
-            Status::Completed => "Completado",
-            Status::Paused => "Pausado",
-            Status::Dropped => "Abandonado",
-            Status::Repeating => "Releyendo",
+            Status::Current => tr!("Leyendo", "Reading"),
+            Status::Planning => tr!("Planeado", "Planning"),
+            Status::Completed => tr!("Completado", "Completed"),
+            Status::Paused => tr!("Pausado", "Paused"),
+            Status::Dropped => tr!("Abandonado", "Dropped"),
+            Status::Repeating => tr!("Releyendo", "Rereading"),
         }
     }
 

@@ -18,8 +18,8 @@ pub fn migrate_legacy() {
     let (old, new) = (user_home.join(".mangaterm"), home());
     if old.is_dir() && !new.exists() {
         match std::fs::rename(&old, &new) {
-            Ok(()) => eprintln!("✿ datos movidos de {} a {}", old.display(), new.display()),
-            Err(e) => eprintln!("no se han podido mover los datos de {}: {e}", old.display()),
+            Ok(()) => eprintln!("{}", trf!("✿ datos movidos de {} a {}", "✿ data moved from {} to {}", old.display(), new.display())),
+            Err(e) => eprintln!("{}", trf!("no se han podido mover los datos de {}: {e}", "couldn't move the data from {}: {e}", old.display())),
         }
     }
 }

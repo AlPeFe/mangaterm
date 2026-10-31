@@ -40,7 +40,7 @@ pub fn is_valid_client_id(id: &str) -> bool {
 
 pub fn save_client_id(id: &str) -> Result<()> {
     if !is_valid_client_id(id) {
-        bail!("el client ID de AniList es un número");
+        bail!(tr!("el client ID de AniList es un número", "the AniList client ID is a number"));
     }
     std::fs::create_dir_all(paths::home())?;
     std::fs::write(paths::anilist_client_file(), id)?;
@@ -51,16 +51,19 @@ pub fn save_client_id(id: &str) -> Result<()> {
 pub async fn login(client_id: &str) -> Result<Credentials> {
     // "localhost" puede resolver a IPv4 o IPv6 según el sistema: escuchar en los dos
     let v4 = TcpListener::bind(("127.0.0.1", PORT)).await.with_context(|| {
-        format!("el puerto {PORT} está ocupado (¿hay otro login abierto?); ciérralo y vuelve a intentarlo")
+        trf!(
+            "el puerto {PORT} está ocupado (¿hay otro login abierto?); ciérralo y vuelve a intentarlo",
+            "port {PORT} is busy (is another login open?); close it and try again"
+        )
     })?;
     let v6 = TcpListener::bind(("::1", PORT)).await.ok();
 
     anilist::open_browser(&anilist::authorize_url(client_id));
     let token = tokio::time::timeout(TIMEOUT, serve(v4, v6))
         .await
-        .map_err(|_| anyhow!("se ha agotado el tiempo de espera (5 min) sin que se aprobara el acceso"))??;
+        .map_err(|_| anyhow!(tr!("se ha agotado el tiempo de espera (5 min) sin que se aprobara el acceso", "timed out (5 min) waiting for access to be approved")))??;
 
-    let (user_id, user_name) = anilist::viewer(&token).await.context("AniList no ha aceptado el token")?;
+    let (user_id, user_name) = anilist::viewer(&token).await.context(tr!("AniList no ha aceptado el token", "AniList didn't accept the token"))?;
     let creds = Credentials { client_id: client_id.to_string(), token, user_id, user_name };
     creds.save()?;
     Ok(creds)
@@ -103,7 +106,7 @@ async fn handle(stream: TcpStream) -> Result<Option<Result<String>>> {
     let (method, path) = (parts.next().unwrap_or(""), parts.next().unwrap_or(""));
 
     let (status, body, result) = match (method, path.split('?').next().unwrap_or("")) {
-        ("GET", "/callback") => ("200 OK", page(CALLBACK_BODY), None),
+        ("GET", "/callback") => ("200 OK", page(&(tr!(CALLBACK_BODY_ES, CALLBACK_BODY_EN).to_string() + CALLBACK_SCRIPT)), None),
         ("POST", "/token") => {
             let mut buf = vec![0; content_length];
             reader.read_exact(&mut buf).await?;
@@ -117,13 +120,13 @@ async fn handle(stream: TcpStream) -> Result<Option<Result<String>>> {
             match (field("token"), field("error")) {
                 (Some(token), _) if token.len() > 20 => ("200 OK", String::from("ok"), Some(Ok(token))),
                 (_, Some(error)) => {
-                    let msg = if error == "access_denied" { "has cancelado el acceso en AniList".into() } else { error };
+                    let msg = if error == "access_denied" { tr!("has cancelado el acceso en AniList", "you cancelled access on AniList").into() } else { error };
                     ("200 OK", String::from("ok"), Some(Err(anyhow!(msg))))
                 }
-                _ => ("400 Bad Request", String::from("sin token"), None),
+                _ => ("400 Bad Request", String::from("no token"), None),
             }
         }
-        _ => ("404 Not Found", page("<p>aquí no hay nada ✿</p>"), None),
+        _ => ("404 Not Found", page(tr!("<p>aquí no hay nada ✿</p>", "<p>nothing here ✿</p>")), None),
     };
 
     let content_type = if body.starts_with("<!doctype") { "text/html; charset=utf-8" } else { "text/plain; charset=utf-8" };
@@ -156,8 +159,9 @@ fn urldecode(s: &str) -> String {
 }
 
 fn page(body: &str) -> String {
+    let lang = tr!("es", "en");
     format!(
-        "<!doctype html><html lang=\"es\"><head><meta charset=\"utf-8\"><title>Han Thỏ · AniList</title>\
+        "<!doctype html><html lang=\"{lang}\"><head><meta charset=\"utf-8\"><title>Han Thỏ · AniList</title>\
          <meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\
          <style>body{{margin:0;min-height:100vh;display:grid;place-items:center;background:#241a22;color:#f4e8f0;\
          font:16px/1.5 system-ui,sans-serif}}main{{text-align:center;padding:2rem;border:1px solid #96607c;\
@@ -168,12 +172,29 @@ fn page(body: &str) -> String {
 }
 
 /// Lee el token del fragmento y se lo pasa al servidor local; después avisa al usuario.
-const CALLBACK_BODY: &str = r#"<div class="flor">✿</div><h1>Han Thỏ</h1><p id="msg">conectando con AniList…</p>
+const CALLBACK_BODY_ES: &str = r#"<div class="flor">✿</div><h1>Han Thỏ</h1><p id="msg">conectando con AniList…</p>
 <script>
+const NO_TOKEN = 'AniList no ha devuelto ningún token';
+const DONE = '✓ ¡listo! ya puedes cerrar esta pestaña y volver a la terminal';
+const RETRY = 'vuelve a la terminal para intentarlo de nuevo';
+const LOST = '✕ no se ha podido hablar con Han Thỏ (¿se ha cerrado?)';
+"#;
+
+const CALLBACK_BODY_EN: &str = r#"<div class="flor">✿</div><h1>Han Thỏ</h1><p id="msg">connecting to AniList…</p>
+<script>
+const NO_TOKEN = 'AniList returned no token';
+const DONE = '✓ all set! you can close this tab and go back to the terminal';
+const RETRY = 'go back to the terminal to try again';
+const LOST = '✕ couldn\'t reach Han Thỏ (was it closed?)';
+"#;
+
+/// Lee el token del fragmento y se lo pasa al servidor local; después avisa al usuario.
+/// Va detrás de CALLBACK_BODY_ES/EN, que definen los textos.
+const CALLBACK_SCRIPT: &str = r#"
 const hash = new URLSearchParams(location.hash.slice(1));
 const query = new URLSearchParams(location.search);
 const token = hash.get('access_token');
-const error = hash.get('error') || query.get('error') || (token ? null : 'AniList no ha devuelto ningún token');
+const error = hash.get('error') || query.get('error') || (token ? null : NO_TOKEN);
 const body = token ? 'token=' + encodeURIComponent(token) : 'error=' + encodeURIComponent(error);
 history.replaceState(null, '', location.pathname); // que el token no quede en el historial
 fetch('/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body })
@@ -181,10 +202,10 @@ fetch('/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-
     const msg = document.getElementById('msg');
     msg.className = token ? 'ok' : 'err';
     msg.innerHTML = token
-      ? '✓ ¡listo! ya puedes cerrar esta pestaña y volver a la terminal'
-      : '✕ ' + error.replace(/[<>&]/g, '') + '<br><small>vuelve a la terminal para intentarlo de nuevo</small>';
+      ? DONE
+      : '✕ ' + error.replace(/[<>&]/g, '') + '<br><small>' + RETRY + '</small>';
   })
-  .catch(() => { document.getElementById('msg').textContent = '✕ no se ha podido hablar con Han Thỏ (¿se ha cerrado?)'; });
+  .catch(() => { document.getElementById('msg').textContent = LOST; });
 </script>"#;
 
 #[cfg(test)]
@@ -220,7 +241,7 @@ mod tests {
     #[tokio::test]
     async fn reports_denied_access() {
         let err = browser_flow("error=access_denied").await.unwrap_err();
-        assert!(err.to_string().contains("has cancelado"));
+        assert!(err.to_string().contains(tr!("has cancelado", "you cancelled")));
     }
 
     #[test]
