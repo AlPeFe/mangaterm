@@ -18,3 +18,25 @@ open class EditText : TextView() {
 }
 
 open class Button : TextView()
+
+/** Sin interfaz: el mensaje va al log del host. */
+class Toast private constructor(private var text: CharSequence?) {
+    fun show() = System.err.println("toast: $text")
+
+    fun setText(s: CharSequence?) {
+        text = s
+    }
+
+    fun cancel() {}
+
+    companion object {
+        const val LENGTH_SHORT = 0
+        const val LENGTH_LONG = 1
+
+        @JvmStatic
+        fun makeText(context: android.content.Context?, text: CharSequence?, duration: Int) = Toast(text)
+
+        @JvmStatic
+        fun makeText(context: android.content.Context?, resId: Int, duration: Int) = Toast(resId.toString())
+    }
+}

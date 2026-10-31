@@ -49,6 +49,8 @@ private val protocolOut = PrintStream(FileOutputStream(FileDescriptor.out), true
 
 fun main() {
     System.setOut(System.err)
+    // Bitmap/Canvas van sobre java.awt: sin ventanas ni icono en el dock
+    System.setProperty("java.awt.headless", "true")
     HostEnv.init()
 
     val requests = SupervisorJob()

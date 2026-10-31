@@ -48,3 +48,55 @@ object Base64 {
         return if (flags and NO_WRAP != 0) out else out + '\n'.code.toByte()
     }
 }
+
+/** Caché LRU con tamaño máximo (por defecto cada entrada cuenta 1, como en Android). */
+open class LruCache<K : Any, V : Any>(private var maxSize: Int) {
+    private val map = LinkedHashMap<K, V>(0, 0.75f, true)
+    private var size = 0
+
+    @Synchronized
+    fun get(key: K): V? = map[key] ?: create(key)?.also { put(key, it) }
+
+    @Synchronized
+    fun put(key: K, value: V): V? {
+        val previous = map.put(key, value)
+        size += sizeOf(key, value) - (previous?.let { sizeOf(key, it) } ?: 0)
+        trimToSize(maxSize)
+        return previous
+    }
+
+    @Synchronized
+    fun remove(key: K): V? = map.remove(key)?.also { size -= sizeOf(key, it) }
+
+    @Synchronized
+    fun trimToSize(maxSize: Int) {
+        val it = map.entries.iterator()
+        while (size > maxSize && it.hasNext()) {
+            val (k, v) = it.next()
+            it.remove()
+            size -= sizeOf(k, v)
+            entryRemoved(true, k, v, null)
+        }
+    }
+
+    fun evictAll() = trimToSize(-1)
+
+    fun resize(maxSize: Int) {
+        this.maxSize = maxSize
+        trimToSize(maxSize)
+    }
+
+    @Synchronized
+    fun size(): Int = size
+
+    fun maxSize(): Int = maxSize
+
+    @Synchronized
+    fun snapshot(): Map<K, V> = LinkedHashMap(map)
+
+    protected open fun sizeOf(key: K, value: V): Int = 1
+
+    protected open fun create(key: K): V? = null
+
+    protected open fun entryRemoved(evicted: Boolean, key: K, oldValue: V, newValue: V?) {}
+}

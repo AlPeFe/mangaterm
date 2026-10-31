@@ -19,6 +19,8 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp-zstd:$okhttp")
     implementation("com.squareup.zstd:zstd-kmp-okio:0.4.0")
     implementation("org.jsoup:jsoup:1.22.2")
+    // WebP para BitmapFactory (ImageIO no lo trae): muchas webs sirven así las páginas troceadas
+    implementation("com.twelvemonkeys.imageio:imageio-webp:3.12.0")
     implementation("com.github.null2264.injekt:injekt-core:4135455a2a")
 }
 
