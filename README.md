@@ -23,6 +23,10 @@ sources at once using the same extensions as [Mihon](https://github.com/mihonapp
 (from whichever repository you add), shows pages as real images (Sixel or Kitty) and syncs your
 progress to [AniList](https://anilist.co).
 
+<div align="center">
+<img src="assets/demo.gif" alt="Demo: searching for Grand Blue across every source, opening it, jumping to chapter 13, reading it and syncing with AniList" width="860">
+</div>
+
 ### Why?
 
 - **Never leave the terminal.** If you live in a console (or work over SSH), you don't need a browser
@@ -72,8 +76,8 @@ progress to [AniList](https://anilist.co).
 
 ![A terminal agent opens Han Thỏ in a side pane](assets/screenshots/en/mcp.png)
 
-<sub>Screenshots rendered from the TUI itself with `python tools/screenshots.py`; the reader page is a
-sample drawing.</sub>
+<sub>Screenshots and demo rendered from the TUI itself with `python tools/screenshots.py` and
+`python tools/demo.py`; the reader pages are sample drawings.</sub>
 
 ## Requirements
 

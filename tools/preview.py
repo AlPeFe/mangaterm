@@ -40,7 +40,7 @@ def render(rows):
                     draw.rectangle(box, fill=color)
                     continue
                 # Cascadia/Consolas no traen estos símbolos (la terminal los toma de otra fuente)
-                font = symbols if ord(ch) > 0x2000 and not 0x2500 <= ord(ch) <= 0x259F else mono
+                font = symbols if ord(ch) > 0x2000 and not 0x2500 <= ord(ch) <= 0x259F and not 0x2800 <= ord(ch) <= 0x28FF else mono
                 draw.text((x * CW, y * CH + 1), ch, font=font, fill=color)
     return img
 

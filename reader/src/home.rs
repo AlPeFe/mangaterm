@@ -98,6 +98,12 @@ impl Home {
         }
     }
 
+    /// Para la demo: fija en qué segundo de la animación estamos.
+    #[cfg(test)]
+    pub fn set_time(&mut self, secs: f32) {
+        self.started = Instant::now() - std::time::Duration::from_secs_f32(secs);
+    }
+
     /// Para las capturas: como si la intro ya hubiera terminado.
     #[cfg(test)]
     pub fn skip_intro(&mut self) {

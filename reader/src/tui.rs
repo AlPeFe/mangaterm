@@ -1853,7 +1853,7 @@ impl App {
             None => tr!("sin sesión", "not logged in").into(),
         };
         vec![
-            MenuItem { icon: "♡", label: tr!("Biblioteca", "Library"), detail: trf!("{favs} favoritos", "{favs} favorites") },
+            MenuItem { icon: "♡", label: tr!("Biblioteca", "Library"), detail: if favs == 1 { tr!("1 favorito", "1 favorite").into() } else { trf!("{favs} favoritos", "{favs} favorites") } },
             MenuItem { icon: "⌕", label: tr!("Buscar", "Search"), detail: sources },
             MenuItem { icon: "✦", label: tr!("Extensiones", "Extensions"), detail: trf!("{} instaladas", "{} installed", self.installed.len()) },
             MenuItem {
@@ -2842,5 +2842,176 @@ mod tests {
             terminal.draw(|f| app.draw(f)).unwrap();
             theme::dump_buffer(terminal.backend().buffer(), &format!("{dir}/{name}.json"));
         }
+    }
+
+    /// Graba una sesión de ejemplo fotograma a fotograma para el vídeo del README
+    /// (ver tools/demo.py): inicio → búsqueda → manga → capítulo 13 → lectura → AniList.
+    /// Lo que en la app real hace el host (buscar, cargar capítulos, descargar páginas) se
+    /// inyecta con los mismos mensajes que mandaría; el resto son pulsaciones de teclas.
+    #[test]
+    fn demo_frames() {
+        let (Ok(dir), Ok(pages_dir)) = (std::env::var("HANTHO_DEMO_DIR"), std::env::var("HANTHO_DEMO_PAGES")) else { return };
+        let mut app = App::new(Picker::halfblocks());
+        let mut terminal = Terminal::new(TestBackend::new(120, 30)).unwrap();
+        let mut frames: Vec<serde_json::Value> = Vec::new();
+        let area = Rect::new(0, 0, 120, 30);
+
+        // Un fotograma: dibuja, vuelca y apunta cuánto dura (y qué página va encima, si es el lector)
+        let mut shot = |app: &mut App, ms: u32| {
+            app.tick += 1;
+            if app.screen == Screen::Home {
+                app.home.tick(area);
+            }
+            terminal.draw(|f| app.draw(f)).unwrap();
+            let n = frames.len();
+            theme::dump_buffer(terminal.backend().buffer(), &format!("{dir}/frame_{n:04}.json"));
+            let page = (app.screen == Screen::Reader).then(|| app.reader.as_ref().unwrap().page);
+            frames.push(serde_json::json!({ "file": format!("frame_{n:04}.json"), "ms": ms, "page": page }));
+        };
+        let key = |app: &mut App, code: KeyCode| app.on_key(KeyEvent::new(code, KeyModifiers::NONE));
+
+        // Datos: fuentes cargadas, Grand Blue en favoritos (12 leídos, vinculado con AniList)
+        let src = |id: &str, name: &str| LoadedSource {
+            info: SourceInfo { id: id.into(), name: name.into(), lang: tr!("es", "en").into(), base_url: None, supports_latest: true },
+        };
+        let names = tr!(
+            ["Manga TV", "LectorTMO", "Olympus Scanlation", "InManga", "Ikigai Mangas"],
+            ["MangaDex", "Weeb Central", "MangaPark", "Bato.to", "Comick"]
+        );
+        app.sources = names.iter().enumerate().map(|(i, n)| src(&i.to_string(), n)).collect();
+        app.installed = names
+            .iter()
+            .map(|n| Installed { pkg: n.to_lowercase(), name: n.to_string(), version_code: 1, version_name: "1.4.12".into(), content_warning: 1, langs: vec![tr!("es", "en").into()] })
+            .collect();
+        app.add.repos = vec!["https://example.org/index.pb".into()];
+        app.status = trf!("{} fuentes listas", "{} sources ready", app.sources.len());
+        let mut fav = fake_favorite("Grand Blue", Status::Current, 12, true, true);
+        fav.source_name = names[1].into();
+        app.library.favorites = vec![fav.clone()];
+        app.anilist_user = Some("alexp".into());
+        let chapters: Vec<Chapter> = (1..=20)
+            .rev()
+            .map(|n| Chapter { url: format!("/c/{n}"), name: trf!("Capítulo {n}", "Chapter {n}"), chapter_number: n as f32, scanlator: Some(tr!("Plot Twist No Fansub", "Kodansha").into()), ..Default::default() })
+            .collect();
+        let key_read = reads::key("1", &fav.manga.url);
+        for c in chapters.iter().filter(|c| c.chapter_number <= 12.0) {
+            app.reads.mark(&key_read, c);
+        }
+
+        // 1. Inicio: el logo aparece y caen pétalos
+        app.screen = Screen::Home;
+        for i in 0..32 {
+            app.home.set_time(i as f32 * 0.08);
+            shot(&mut app, 80);
+        }
+        for _ in 0..8 {
+            shot(&mut app, 80);
+        }
+        key(&mut app, KeyCode::Down);
+        shot(&mut app, 600);
+
+        // 2. Buscar «grand blue»
+        key(&mut app, KeyCode::Enter);
+        shot(&mut app, 500);
+        for c in "grand blue".chars() {
+            key(&mut app, KeyCode::Char(c));
+            shot(&mut app, 110);
+        }
+        shot(&mut app, 400);
+        app.query = app.input.trim().to_string();
+        app.editing = false;
+        app.search_gen += 1;
+        app.pending = app.sources.len();
+        shot(&mut app, 350);
+        let results: [&[&str]; 5] = [
+            &["Grand Blue", "Blue Lock", "Ao no Hako (Blue Box)"],
+            &["Grand Blue", "Grand Blue: Gekijouban", "Blue Lock", "Blue Period"],
+            &["Grand Blue", "Blue Lock", "Ao no Hako (Blue Box)"],
+            &["Grand Blue", "Blue Lock", "Blue Period"],
+            &["Grand Blue Dreaming", "Blue Lock"],
+        ];
+        for i in [1usize, 0, 2, 3, 4] {
+            let mangas = results[i].iter().map(|t| Manga { url: format!("/manga/{t}"), title: t.to_string(), ..Default::default() }).collect();
+            app.update(Msg::Search(app.search_gen, SearchEvent::Results { source: app.sources[i].clone(), mangas }));
+            shot(&mut app, 300);
+        }
+        app.status = tr!("5 fuentes en 2,1 s", "5 sources in 2.1 s").into();
+        shot(&mut app, 1300);
+
+        // 3. Elegir fuente y abrir el manga
+        key(&mut app, KeyCode::Enter);
+        shot(&mut app, 1100);
+        let (source, manga) = app.groups[app.group.unwrap()].entries[0].clone();
+        app.generation += 1;
+        app.details = None;
+        app.chapters_state.select(None);
+        app.status = trf!("cargando {} desde {}…", "loading {} from {}…", manga.title, source.info.name);
+        app.current = Some((source.clone(), manga.clone()));
+        app.manga_back = Screen::Sources;
+        app.screen = Screen::Manga;
+        for _ in 0..4 {
+            shot(&mut app, 120);
+        }
+        let mut full = fav.manga.clone();
+        full.author = Some("Kenji Inoue, Kimitake Yoshioka".into());
+        full.genre = Some(tr!("Comedia, Recuentos de la vida, Seinen", "Comedy, Slice of Life, Seinen").into());
+        app.update(Msg::Details(app.generation, Ok(MangaDetails { manga: full, chapters: chapters.clone() })));
+        shot(&mut app, 1800);
+
+        // 4. Saltar al capítulo 13 con #
+        key(&mut app, KeyCode::Char('#'));
+        shot(&mut app, 450);
+        for c in "13".chars() {
+            key(&mut app, KeyCode::Char(c));
+            shot(&mut app, 220);
+        }
+        key(&mut app, KeyCode::Enter);
+        shot(&mut app, 1000);
+
+        // 5. Leer: las páginas son dibujos de ejemplo que tools/demo.py pone encima
+        let page_imgs: Vec<Arc<DynamicImage>> =
+            (0..3).map(|i| Arc::new(image::open(format!("{pages_dir}/page_{i}.png")).unwrap())).collect();
+        app.sixel = true;
+        app.font = (10, 20);
+        app.reader_area = Rect::new(0, 0, 120, 29);
+        let chapter = chapters.iter().position(|c| c.chapter_number == 13.0).unwrap();
+        let total = 6;
+        app.reader = Some(Reader {
+            source: source.clone(),
+            manga: app.details.as_ref().unwrap().manga.clone(),
+            manga_url: manga.url.clone(),
+            chapters: chapters.clone(),
+            chapter,
+            pages: (0..total as i32).map(|i| Page { index: i, url: String::new(), image_url: None }).collect(),
+            page: 0,
+            requested: HashSet::new(),
+            images: HashMap::new(),
+            error: None,
+        });
+        app.screen = Screen::Reader;
+        let ensure_page = |app: &mut App| {
+            let r = app.reader.as_mut().unwrap();
+            let img = page_imgs[r.page % page_imgs.len()].clone();
+            let encoded = render::encode(&img, 120, 29, (10, 20));
+            r.images.insert(r.page, PageImage { img, encoded: Some(((120, 29), encoded)), encoding: None, proto: None });
+        };
+        for page in 0..total {
+            ensure_page(&mut app);
+            shot(&mut app, if page == 0 { 1600 } else { 1100 });
+            if page + 1 < total {
+                key(&mut app, KeyCode::Right);
+            }
+        }
+        // Última página: el capítulo queda leído y se envía a AniList
+        let synced = anilist::SyncResult { entry: anilist::ListEntry { status: Some("CURRENT".into()), progress: Some(13) }, kept_remote_progress: false };
+        app.update(Msg::AnilistSynced("1".into(), manga.url.clone(), Ok(synced)));
+        ensure_page(&mut app);
+        shot(&mut app, 1800);
+
+        // 6. De vuelta a la lista: el 13 ya aparece como leído
+        key(&mut app, KeyCode::Esc);
+        shot(&mut app, 2600);
+
+        std::fs::write(format!("{dir}/frames.json"), serde_json::to_vec_pretty(&frames).unwrap()).unwrap();
     }
 }

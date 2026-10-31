@@ -23,6 +23,10 @@ mismas extensiones que [Mihon](https://github.com/mihonapp/mihon) en Android (la
 que tú añadas), muestra las páginas como imágenes de verdad
 (Sixel o Kitty) y lleva tu progreso a [AniList](https://anilist.co).
 
+<div align="center">
+<img src="assets/demo.es.gif" alt="Demo: buscar Grand Blue en todas las fuentes, abrirlo, saltar al capítulo 13, leerlo y sincronizar con AniList" width="860">
+</div>
+
 ### ¿Por qué?
 
 - **Sin salir de la terminal.** Si vives en una consola (o trabajas por SSH), no hace falta abrir el navegador
@@ -71,8 +75,8 @@ que tú añadas), muestra las páginas como imágenes de verdad
 
 ![Un agente de terminal abre Han Thỏ en un panel lateral](assets/screenshots/mcp.png)
 
-<sub>Capturas generadas desde la propia TUI con `python tools/screenshots.py`; la página del lector
-es un dibujo de ejemplo.</sub>
+<sub>Capturas y demo generadas desde la propia TUI con `python tools/screenshots.py` y
+`python tools/demo.py`; las páginas del lector son dibujos de ejemplo.</sub>
 
 ## Requisitos
 
