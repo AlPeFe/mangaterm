@@ -73,7 +73,7 @@ pub fn http_cache() -> PathBuf {
     home().join("cache").join("api")
 }
 
-/// Ajuste preferido del lector (general y por manga).
-pub fn reader_file() -> PathBuf {
-    home().join("reader.json")
+/// Preferencias de la TUI (ajuste del lector, idiomas de búsqueda).
+pub fn prefs_file() -> PathBuf {
+    home().join("prefs.json")
 }

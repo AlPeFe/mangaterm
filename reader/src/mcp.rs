@@ -130,7 +130,12 @@ impl Server {
         let lang = args["lang"].as_str();
         let limit = args["limit"].as_u64().unwrap_or(15) as usize;
         let (host, sources) = self.host().await?;
-        let sources: Vec<_> = sources.iter().filter(|s| lang.is_none_or(|l| s.info.lang == l || s.info.lang == "all")).cloned().collect();
+        // Sin idioma explícito, los mismos que la búsqueda de la TUI
+        let langs = match lang {
+            Some(l) => vec![l.to_string()],
+            None => crate::prefs::Prefs::load().search_langs,
+        };
+        let sources: Vec<_> = sources.iter().filter(|s| crate::prefs::lang_matches(&langs, &s.info.lang)).cloned().collect();
 
         let mut groups: Vec<(String, String, Vec<Value>)> = Vec::new(); // (clave, título, fuentes)
         let mut failed = 0;
@@ -434,7 +439,7 @@ fn tools() -> Value {
             "description": tr!("Busca un manga por título en todas las fuentes instaladas a la vez (tarda hasta ~25 s). Devuelve los títulos agrupados con las fuentes donde aparecen.", "Search a manga by title across every installed source at once (takes up to ~25 s). Returns titles grouped with the sources they appear in."),
             "inputSchema": { "type": "object", "properties": {
                 "query": { "type": "string", "description": tr!("Título a buscar", "Title to search for") },
-                "lang": { "type": "string", "description": tr!("Solo fuentes de este idioma (p. ej. es, en)", "Only sources in this language (e.g. en, es)") },
+                "lang": { "type": "string", "description": tr!("Solo fuentes de este idioma (p. ej. es, en); si no se indica, los idiomas elegidos en la TUI", "Only sources in this language (e.g. en, es); if omitted, the languages chosen in the TUI") },
                 "limit": { "type": "integer", "description": tr!("Máximo de títulos (por defecto 15)", "Maximum number of titles (default 15)") }
             }, "required": ["query"] },
             "annotations": { "readOnlyHint": true, "openWorldHint": true }

@@ -181,7 +181,7 @@ Every list supports `↑`/`↓` and `k`/`j`; `esc` or `q` goes back; `ctrl+c` qu
 | Home | `1`–`7` or `enter` choose · `/` search · `q` quit |
 | Add extensions | `enter` install, update or remove · `/` filter · `l` language · `n` hide NSFW · `r` add repository · `u` update catalog |
 | Library | `enter` open · `d` remove · `/` search |
-| Search | type and press `enter` · `tab`/`↓` go to results · `/` edit · `b` library |
+| Search | type and press `enter` · `tab`/`↓` go to results · `/` edit · `b` library · `ctrl+L` (or `l` outside the box) source language: system language + English by default; remembered |
 | Manga | `enter` read · `c` continue · `f` favorite · `e` status · `a` link/sync AniList · `A` re-link · `r` reload |
 | Chapters | `m` mark/unmark read · `M` mark this one and all before · `/` filter · `#` go to chapter N · `[`/`]` ±100 · `g`/`G` first/last · `o` reverse order |
 | Mihon backup | `enter` export, or import the selected file · `r` look for files again |

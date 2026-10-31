@@ -181,7 +181,7 @@ En todas las listas funcionan `↑`/`↓` y `k`/`j`; `esc` o `q` vuelve atrás; 
 | Inicio | `1`–`7` o `enter` elegir · `/` buscar · `q` salir |
 | Añadir extensiones | `enter` instalar, actualizar o quitar · `/` filtrar · `l` idioma · `n` ocultar NSFW · `r` añadir repositorio · `u` actualizar catálogo |
 | Biblioteca | `enter` abrir · `d` quitar · `/` buscar |
-| Búsqueda | escribe y pulsa `enter` · `tab`/`↓` ir a resultados · `/` editar · `b` biblioteca |
+| Búsqueda | escribe y pulsa `enter` · `tab`/`↓` ir a resultados · `/` editar · `b` biblioteca · `ctrl+L` (o `l` fuera del cuadro) idioma de las fuentes: por defecto el del sistema + inglés; se recuerda |
 | Manga | `enter` leer · `c` continuar · `f` favorito · `e` estado · `a` vincular/sincronizar AniList · `A` re-vincular · `r` recargar |
 | Capítulos | `m` marcar/desmarcar leído · `M` marcar este y los anteriores · `/` filtrar · `#` ir al capítulo N · `[`/`]` ±100 · `g`/`G` primero/último · `o` invertir orden |
 | Backup Mihon | `enter` exportar o importar el archivo elegido · `r` buscar archivos de nuevo |

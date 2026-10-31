@@ -15,6 +15,7 @@ use crate::library::{AniListLink, LastRead, Library, Status};
 use crate::theme::{self, ERROR, FAINT, LAVENDER, MINT, MUTED, ON_PINK, PEACH, PINK, PINK_DIM, TEXT};
 use crate::model::{Chapter, Manga, MangaDetails, Page};
 use crate::paths;
+use crate::prefs::{self, Prefs};
 use crate::render::{self, Encoded, Fit, View};
 use crate::search::{self, SearchEvent};
 use anyhow::Result;
@@ -87,34 +88,6 @@ impl PageImage {
             (Some((_, enc)), _) => enc.overflow,
             (None, Some((_, _, overflow))) => *overflow,
             _ => (0, 0),
-        }
-    }
-}
-
-/// Ajuste preferido del lector: el último elegido y el de cada manga (`~/.hantho/reader.json`).
-#[derive(Default, serde::Serialize, serde::Deserialize)]
-struct ReaderPrefs {
-    #[serde(default)]
-    fit: Fit,
-    #[serde(default)]
-    manga: HashMap<String, Fit>,
-}
-
-impl ReaderPrefs {
-    fn load() -> Self {
-        std::fs::read(paths::reader_file()).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default()
-    }
-
-    fn fit_for(&self, key: &str) -> Fit {
-        self.manga.get(key).copied().unwrap_or(self.fit)
-    }
-
-    fn set(&mut self, key: String, fit: Fit) {
-        self.fit = fit;
-        self.manga.insert(key, fit);
-        if let Ok(json) = serde_json::to_vec_pretty(self) {
-            let _ = std::fs::create_dir_all(paths::home());
-            let _ = std::fs::write(paths::reader_file(), json);
         }
     }
 }
@@ -285,7 +258,7 @@ struct App {
     reader_area: Rect,
     /// Qué página y en qué posición está pintada ya en pantalla (Sixel se escribe aparte de ratatui).
     sixel_drawn: Option<(usize, Rect, View)>,
-    reader_prefs: ReaderPrefs,
+    prefs: Prefs,
     tx: mpsc::UnboundedSender<Msg>,
     rx: mpsc::UnboundedReceiver<Msg>,
     host: Option<Arc<Host>>,
@@ -415,7 +388,7 @@ impl App {
             font: (font.width, font.height),
             reader_area: Rect::default(),
             sixel_drawn: None,
-            reader_prefs: ReaderPrefs::load(),
+            prefs: Prefs::load(),
             picker,
             tx,
             rx,
@@ -1035,6 +1008,10 @@ impl App {
     }
 
     fn key_search(&mut self, key: KeyEvent) {
+        if key.code == KeyCode::Char('l') && key.modifiers.contains(KeyModifiers::CONTROL) {
+            self.cycle_search_langs();
+            return;
+        }
         if self.editing {
             match key.code {
                 KeyCode::Enter if !self.input.trim().is_empty() => {
@@ -1056,6 +1033,7 @@ impl App {
             KeyCode::Char('q') | KeyCode::Esc => self.screen = Screen::Home,
             KeyCode::Char('/') | KeyCode::Char('s') => self.editing = true,
             KeyCode::Char('b') | KeyCode::Tab => self.screen = Screen::Library,
+            KeyCode::Char('l') => self.cycle_search_langs(),
             KeyCode::Up | KeyCode::Char('k') => select_prev(&mut self.groups_state),
             KeyCode::Down | KeyCode::Char('j') => select_next(&mut self.groups_state, self.groups.len()),
             KeyCode::Enter => {
@@ -1264,7 +1242,7 @@ impl App {
                 let fit = r.view.fit.next();
                 r.view = View { fit, ..View::default() };
                 let key = r.prefs_key();
-                self.reader_prefs.set(key, fit);
+                self.prefs.set_fit(key, fit);
                 self.view_changed();
             }
             KeyCode::Char('+') | KeyCode::Char('=') => self.zoom(1),
@@ -1348,6 +1326,24 @@ impl App {
 
     // ───────────────────────────── acciones ─────────────────────────────
 
+    /// Pasa al siguiente filtro de idioma, lo guarda y repite la búsqueda si ya había una.
+    fn cycle_search_langs(&mut self) {
+        let options = prefs::lang_options(self.sources.iter().map(|s| s.info.lang.as_str()));
+        let current = options.iter().position(|o| *o == self.prefs.search_langs);
+        self.prefs.search_langs = options[current.map_or(0, |i| (i + 1) % options.len())].clone();
+        self.prefs.save();
+        let n = self.search_sources().len();
+        self.status = trf!("buscar en: {} ({n} fuentes)", "search in: {} ({n} sources)", self.prefs.langs_label());
+        if !self.query.is_empty() {
+            self.start_search();
+        }
+    }
+
+    /// Fuentes en las que buscar según el filtro de idioma.
+    fn search_sources(&self) -> Vec<LoadedSource> {
+        self.sources.iter().filter(|s| prefs::lang_matches(&self.prefs.search_langs, &s.info.lang)).cloned().collect()
+    }
+
     fn start_search(&mut self) {
         self.groups.clear();
         self.groups_state.select(None);
@@ -1356,10 +1352,15 @@ impl App {
             self.status = tr!("esperando a que carguen las extensiones…", "waiting for extensions to load…").into();
             return;
         };
+        let sources = self.search_sources();
+        if sources.is_empty() {
+            self.status = trf!("ninguna fuente en {} (cambia con ctrl+L)", "no sources in {} (change it with ctrl+L)", self.prefs.langs_label());
+            return;
+        }
         self.search_gen += 1;
-        self.pending = self.sources.len();
+        self.pending = sources.len();
         let generation = self.search_gen;
-        let mut rx = search::global(host, self.sources.clone(), self.query.clone());
+        let mut rx = search::global(host, sources, self.query.clone());
         let tx = self.tx.clone();
         tokio::spawn(async move {
             while let Some(ev) = rx.recv().await {
@@ -1840,7 +1841,7 @@ impl App {
         self.generation += 1;
         let generation = self.generation;
         let chapter = details.chapters[index].clone();
-        let fit = self.reader_prefs.fit_for(&reads::key(&source.info.id, &manga.url));
+        let fit = self.prefs.fit_for(&reads::key(&source.info.id, &manga.url));
         self.reader = Some(Reader {
             source: source.clone(),
             manga_url: manga.url.clone(),
@@ -2392,7 +2393,8 @@ impl App {
             let cursor = if self.editing && self.tick % 16 < 9 { "▏" } else { " " };
             Line::from(vec![Span::raw(self.input.clone()).fg(TEXT), Span::raw(cursor).fg(PINK)])
         };
-        let input_block = if self.editing { theme::block_focused(tr!("⌕ buscar", "⌕ search")) } else { theme::block(tr!("⌕ buscar", "⌕ search")) };
+        let search_title = trf!("⌕ buscar · {}", "⌕ search · {}", self.prefs.langs_label());
+        let input_block = if self.editing { theme::block_focused(&search_title) } else { theme::block(&search_title) };
         f.render_widget(Paragraph::new(input).block(input_block), input_area);
 
         let items: Vec<ListItem> = self
@@ -2427,9 +2429,9 @@ impl App {
             status = trf!("{status} · {} fuentes han fallado", "{status} · {} sources failed", self.failures.len());
         }
         let keys: &[(&str, &str)] = if self.editing {
-            &[("enter", tr!("buscar", "search")), ("↓", tr!("resultados", "results")), ("esc", tr!("menú", "menu"))]
+            &[("enter", tr!("buscar", "search")), ("^L", tr!("idioma", "language")), ("↓", tr!("resultados", "results")), ("esc", tr!("menú", "menu"))]
         } else {
-            &[("enter", tr!("abrir", "open")), ("/", tr!("editar", "edit")), ("b", tr!("biblioteca", "library")), ("esc", tr!("menú", "menu"))]
+            &[("enter", tr!("abrir", "open")), ("/", tr!("editar", "edit")), ("l", tr!("idioma", "language")), ("b", tr!("biblioteca", "library")), ("esc", tr!("menú", "menu"))]
         };
         theme::status_bar(f, status_area, tr!("BUSCAR", "SEARCH"), &status, keys);
     }

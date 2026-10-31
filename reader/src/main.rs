@@ -13,6 +13,7 @@ mod library;
 mod mcp;
 mod model;
 mod paths;
+mod prefs;
 mod reads;
 mod render;
 mod search;
