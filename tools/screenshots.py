@@ -4,6 +4,8 @@ Ejecuta el test `screens_preview`, que dibuja cada pantalla con datos de ejemplo
 ratatui, convierte los volcados en PNG con tools/preview.py y les pone marco de ventana. La página
 del lector es un dibujo original generado aquí (la terminal la pintaría con Sixel, fuera del buffer).
 
+Genera dos juegos: en español (assets/screenshots/) y en inglés (assets/screenshots/en/).
+
 Uso (desde la raíz del repo): python tools/screenshots.py
 """
 import json
@@ -29,12 +31,76 @@ MUTED = (160, 140, 156)
 FAINT = (100, 86, 98)
 FRAME = (36, 28, 38)
 
+# Textos de las capturas (lo que no sale de la TUI) en cada idioma
+TEXTS = {
+    "es": {
+        "bubble": ("¡A leer!", "capítulo 13"),
+        "titles": {
+            "inicio": "hantho",
+            "biblioteca": "hantho · biblioteca",
+            "busqueda": "hantho · buscar",
+            "capitulos": "hantho · Grand Blue",
+            "anilist": "hantho · vincular con AniList",
+            "backup": "hantho · backup de Mihon",
+            "anadir_extensiones": "hantho · añadir extensiones",
+            "repositorio": "hantho · añadir repositorio",
+            "lector": "hantho · lector",
+            "mcp": "terminal · agente + hantho",
+        },
+        "agent": [
+            "> ábreme Grand Blue por donde iba",
+            "● hantho · library",
+            "Grand Blue: leyendo, capítulo 12 de 20",
+            "● hantho · open_reader",
+            "manga: Grand Blue · continuar",
+            "abierto en un panel a la derecha",
+            "Listo: Grand Blue está abierto a la",
+            "derecha, capítulo 13, página 7.",
+            "Cuando termines el capítulo se marca",
+            "como leído y se envía a AniList.",
+            "> marca como leídos hasta el 12",
+            "● hantho · mark_read",
+            "capítulos 1–12 leídos · AniList ✓",
+        ],
+    },
+    "en": {
+        "bubble": ("Let's read!", "chapter 13"),
+        "titles": {
+            "inicio": "hantho",
+            "biblioteca": "hantho · library",
+            "busqueda": "hantho · search",
+            "capitulos": "hantho · Grand Blue",
+            "anilist": "hantho · link to AniList",
+            "backup": "hantho · Mihon backup",
+            "anadir_extensiones": "hantho · add extensions",
+            "repositorio": "hantho · add repository",
+            "lector": "hantho · reader",
+            "mcp": "terminal · agent + hantho",
+        },
+        "agent": [
+            "> open Grand Blue where I left off",
+            "● hantho · library",
+            "Grand Blue: reading, chapter 12 of 20",
+            "● hantho · open_reader",
+            "manga: Grand Blue · continue",
+            "opened in a pane on the right",
+            "Done: Grand Blue is open on the right,",
+            "chapter 13, page 7.",
+            "When you finish the chapter it gets",
+            "marked as read and sent to AniList.",
+            "> mark everything up to 12 as read",
+            "● hantho · mark_read",
+            "chapters 1–12 read · AniList ✓",
+        ],
+    },
+}
+
 
 def font(names, size):
     return preview.load_font(names, size)
 
 
-def sample_page(path):
+def sample_page(path, bubble):
     """Página de manga de ejemplo: viñetas, tramas y bocadillos, en escala de grises."""
     w, h = 760, 1100
     img = Image.new("L", (w, h), 255)
@@ -87,8 +153,8 @@ def sample_page(path):
     d.ellipse((x0 + 20, y0 + 30, x1 - 20, y0 + 230), fill=255, outline=0, width=4)
     d.polygon([(x0 + 90, y0 + 210), (x0 + 60, y0 + 300), (x0 + 140, y0 + 222)], fill=255, outline=0)
     d.line((x0 + 92, y0 + 214, x0 + 138, y0 + 222), fill=255, width=6)
-    d.text(((x0 + x1) // 2, y0 + 105), "¡A leer!", font=title, fill=0, anchor="mm")
-    d.text(((x0 + x1) // 2, y0 + 155), "capítulo 13", font=body, fill=0, anchor="mm")
+    d.text(((x0 + x1) // 2, y0 + 105), bubble[0], font=title, fill=0, anchor="mm")
+    d.text(((x0 + x1) // 2, y0 + 155), bubble[1], font=body, fill=0, anchor="mm")
     for i, (px, py) in enumerate([(x0 + 200, y0 + 280), (x0 + 120, y0 + 310), (x0 + 250, y0 + 320)]):
         draw_flower(d, px, py, 16 + 5 * i)
     # 4: paisaje con pétalos
@@ -141,7 +207,7 @@ def window(content, title):
     return out
 
 
-def agent_pane(cols, rows):
+def agent_pane(cols, rows, text):
     """Panel izquierdo genérico de un agente de terminal que usa el MCP de Han Thỏ."""
     cells = [[[" ", None, None] for _ in range(cols)] for _ in range(rows)]
 
@@ -150,69 +216,66 @@ def agent_pane(cols, rows):
             if x + i < cols:
                 cells[y][x + i] = [ch, "#%02x%02x%02x" % color, None]
 
-    lines = [
-        (1, 1, "> ábreme Grand Blue por donde iba", TEXT),
-        (3, 1, "● hantho · library", LAVENDER),
-        (4, 3, "Grand Blue: leyendo, capítulo 12 de 20", MUTED),
-        (6, 1, "● hantho · open_reader", LAVENDER),
-        (7, 3, "manga: Grand Blue · continuar", MUTED),
-        (8, 3, "abierto en un panel a la derecha", MUTED),
-        (10, 1, "Listo: Grand Blue está abierto a la", TEXT),
-        (11, 1, "derecha, capítulo 13, página 7.", TEXT),
-        (12, 1, "Cuando termines el capítulo se marca", TEXT),
-        (13, 1, "como leído y se envía a AniList.", TEXT),
-        (16, 1, "> marca como leídos hasta el 12", TEXT),
-        (18, 1, "● hantho · mark_read", LAVENDER),
-        (19, 3, "capítulos 1–12 leídos · AniList ✓", MUTED),
+    layout = [
+        (1, 1, TEXT), (3, 1, LAVENDER), (4, 3, MUTED), (6, 1, LAVENDER), (7, 3, MUTED), (8, 3, MUTED),
+        (10, 1, TEXT), (11, 1, TEXT), (12, 1, TEXT), (13, 1, TEXT), (16, 1, TEXT), (18, 1, LAVENDER), (19, 3, MUTED),
     ]
-    for y, x, text, color in lines:
+    for (y, x, color), text in zip(layout, text):
         put(y, x, text, color)
     put(rows - 2, 0, "─" * cols, FAINT)
     put(rows - 1, 1, "> ", PINK)
     return cells
 
 
-def main():
-    OUT.mkdir(parents=True, exist_ok=True)
+def generate(lang, out_dir):
+    texts = TEXTS[lang]
+    out_dir.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory() as tmp:
         tmp = Path(tmp)
         page_path = tmp / "page.png"
-        sample_page(page_path)
-        env = dict(os.environ, HANTHO_LANG="es", HANTHO_PREVIEW_DIR=str(tmp), HANTHO_PREVIEW_PAGE=str(page_path), HANTHO_HOME=str(tmp / "home"))
+        sample_page(page_path, texts["bubble"])
+        env = dict(os.environ, HANTHO_LANG=lang, HANTHO_PREVIEW_DIR=str(tmp), HANTHO_PREVIEW_PAGE=str(page_path), HANTHO_HOME=str(tmp / "home"))
         subprocess.run(
             ["cargo", "test", "--release", "--target-dir", "target/check", "screens_preview", "--", "--exact", "tui::tests::screens_preview"],
             cwd=ROOT / "reader", env=env, check=True,
         )
         load = lambda name: json.loads((tmp / f"{name}.json").read_text(encoding="utf-8"))
         page = Image.open(page_path)
+        titles = texts["titles"]
 
         shots = {
-            "inicio": ("home", "hantho"),
-            "biblioteca": ("library", "hantho · biblioteca"),
-            "busqueda": ("search", "hantho · buscar"),
-            "capitulos": ("manga", "hantho · Grand Blue"),
-            "anilist": ("anilist_pick", "hantho · vincular con AniList"),
-            "backup": ("backup", "hantho · backup de Mihon"),
-            "anadir_extensiones": ("add_extensions", "hantho · añadir extensiones"),
-            "repositorio": ("add_repo", "hantho · añadir repositorio"),
+            "inicio": "home",
+            "biblioteca": "library",
+            "busqueda": "search",
+            "capitulos": "manga",
+            "anilist": "anilist_pick",
+            "backup": "backup",
+            "anadir_extensiones": "add_extensions",
+            "repositorio": "add_repo",
         }
-        for out, (name, title) in shots.items():
-            window(preview.render(load(name)), title).save(OUT / f"{out}.png")
-            print(OUT / f"{out}.png")
+        for out, name in shots.items():
+            window(preview.render(load(name)), titles[out]).save(out_dir / f"{out}.png")
+            print(out_dir / f"{out}.png")
 
         reader = paste_page(preview.render(load("reader")), page, 120)
-        window(reader, "hantho · lector").save(OUT / "lector.png")
-        print(OUT / "lector.png")
+        window(reader, titles["lector"]).save(out_dir / "lector.png")
+        print(out_dir / "lector.png")
 
         # Panel lateral del MCP: agente a la izquierda, lector a la derecha
         side = load("reader_side")
         left_cols = 55
-        rows = [agent_pane(left_cols, 30)[y] + [["│", "#%02x%02x%02x" % FAINT, None]] + side[y] for y in range(30)]
+        agent = agent_pane(left_cols, 30, texts["agent"])
+        rows = [agent[y] + [["│", "#%02x%02x%02x" % FAINT, None]] + side[y] for y in range(30)]
         split = preview.render(rows)
         right = paste_page(preview.render(side), page, 64)
         split.paste(right, ((left_cols + 1) * preview.CW, 0))
-        window(split, "terminal · agente + hantho").save(OUT / "mcp.png")
-        print(OUT / "mcp.png")
+        window(split, titles["mcp"]).save(out_dir / "mcp.png")
+        print(out_dir / "mcp.png")
+
+
+def main():
+    generate("es", OUT)
+    generate("en", OUT / "en")
 
 
 if __name__ == "__main__":

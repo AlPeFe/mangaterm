@@ -1,94 +1,97 @@
 <div align="center">
 
-<img src="assets/logo.svg" alt="Logo de Han Thỏ: una flor de sakura en una ventana de terminal" width="128" height="128">
+<img src="assets/logo.svg" alt="Han Thỏ logo: a sakura blossom in a terminal window" width="128" height="128">
 
 # Han Thỏ
 
-**Manga en tu terminal, con las extensiones de Mihon y un toque de sakura.**
+**Manga in your terminal, powered by Mihon extensions, with a touch of sakura.**
 
 [![CI](https://github.com/AlPeFe/mangaterm/actions/workflows/ci.yml/badge.svg)](https://github.com/AlPeFe/mangaterm/actions/workflows/ci.yml)
-[![Licencia: Apache-2.0](https://img.shields.io/badge/licencia-Apache--2.0-FFB6D5?labelColor=241A22)](LICENSE)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-FFB6D5?labelColor=241A22)](LICENSE)
 ![Linux](https://img.shields.io/badge/Linux-✓-A0ECC8?labelColor=241A22&logo=linux&logoColor=white)
 ![Windows](https://img.shields.io/badge/Windows-✓-C8B2FF?labelColor=241A22&logo=windows&logoColor=white)
 ![Rust](https://img.shields.io/badge/Rust-2024-FFCCAA?labelColor=241A22&logo=rust&logoColor=white)
+
+**English** · [Español](README.es.md)
 
 </div>
 
 ---
 
-**Han Thỏ** (en la terminal, `hantho`) es un lector de manga para la terminal. Busca en todas tus fuentes a la vez usando las
-mismas extensiones que [Mihon](https://github.com/mihonapp/mihon) en Android (las del repositorio
-que tú añadas), muestra las páginas como imágenes de verdad
-(Sixel o Kitty) y lleva tu progreso a [AniList](https://anilist.co).
+**Han Thỏ** (`hantho` on the command line) is a manga reader for the terminal. It searches all your
+sources at once using the same extensions as [Mihon](https://github.com/mihonapp/mihon) on Android
+(from whichever repository you add), shows pages as real images (Sixel or Kitty) and syncs your
+progress to [AniList](https://anilist.co).
 
-### ¿Por qué?
+### Why?
 
-- **Sin salir de la terminal.** Si vives en una consola (o trabajas por SSH), no hace falta abrir el navegador
-  ni el móvil para leer un capítulo.
-- **El ecosistema de Mihon, en el escritorio.** En lugar de reescribir scrapers, Han Thỏ ejecuta las
-  extensiones existentes (más de 1400, en 150 idiomas) en una JVM normal. Cuando una fuente cambia,
-  se actualiza la extensión y ya está.
-- **Pensado para manga.** Un render Sixel propio, ajustado para páginas en blanco y negro: sin moiré en
-  las tramas ni ruido de dithering.
+- **Never leave the terminal.** If you live in a console (or work over SSH), you don't need a browser
+  or your phone to read a chapter.
+- **The Mihon ecosystem, on the desktop.** Instead of rewriting scrapers, Han Thỏ runs the existing
+  extensions (over 1400, in 150 languages) on a regular JVM. When a source changes, the extension gets
+  updated and that's it.
+- **Built for manga.** A custom Sixel renderer tuned for black-and-white pages: no moiré on screentones
+  and no dithering noise.
 
-## Funciones
+## Features
 
-- 🌸 **TUI** con tema rosa pastel, pantalla de inicio animada, biblioteca, extensiones y AniList.
-- 🔎 **Búsqueda global** en todas las fuentes instaladas en paralelo (≈165 fuentes en español en ~25 s),
-  con resultados agrupados por obra.
-- 📖 **Lector** con imágenes Sixel o Kitty; fallback a bloques de color si la terminal no tiene gráficos.
-  Precarga de páginas siguientes.
-- 💗 **Biblioteca**: favoritos, estado de lectura (leyendo, en pausa, completado…), "continuar" donde lo dejaste.
-- ✓ **Capítulos leídos**: se marcan solos al terminar un capítulo y se ven apagados en la lista; en mangas
-  de mil capítulos, filtra (`/`), salta a un número (`#`) o avanza de cien en cien.
-- 🧩 **Extensiones**: como en Mihon, Han Thỏ no trae ninguna. Añades el repositorio que quieras y
-  desde *Añadir extensiones* filtras por nombre, idioma o NSFW e instalas con `enter`.
-- ☁️ **AniList**: login por navegador sin copiar nada; cada manga se vincula con su obra (solo si es una
-  coincidencia exacta, o eligiéndola tú) y el progreso se envía al terminar capítulos. Nunca retrocede.
-- ⇄ **Backups de Mihon**: importa un `.tachibk` (favoritos, leídos, vínculos con AniList; instala solas las
-  extensiones que falten) y exporta tu biblioteca para restaurarla en Mihon.
-- 🤖 **Servidor MCP**: Claude Code, Codex y otros agentes pueden buscar, consultar tu biblioteca, marcar
-  capítulos y abrir el lector en un panel al lado del chat ([`docs/mcp.md`](docs/mcp.md)).
-- 🐢 **Respetuoso con los servicios**: rate limiting y caché tanto para AniList como para las fuentes.
-- 🌐 **Español e inglés**: usa el idioma del sistema (español si está en español; inglés en cualquier otro caso).
-- 🐧🪟 **Linux y Windows**, probado en CI en ambos.
+- 🌸 **TUI** with a pastel-pink theme, animated home screen, library, extensions and AniList.
+- 🔎 **Global search** across every installed source in parallel (≈165 Spanish sources in ~25 s),
+  with results grouped by title.
+- 📖 **Reader** with Sixel or Kitty images; falls back to colored blocks if the terminal has no graphics.
+  Upcoming pages are preloaded.
+- 💗 **Library**: favorites, reading status (reading, paused, completed…), "continue" where you left off.
+- ✓ **Read chapters**: marked automatically when you finish a chapter and dimmed in the list; for manga
+  with a thousand chapters, filter (`/`), jump to a number (`#`) or move a hundred at a time.
+- 🧩 **Extensions**: like Mihon, Han Thỏ ships none. Add the repository you want, then in
+  *Add extensions* filter by name, language or NSFW and install with `enter`.
+- ☁️ **AniList**: browser login with nothing to copy; each manga is linked to its AniList entry (only on
+  an exact match, or picked by you) and progress is sent as you finish chapters. It never goes backwards.
+- ⇄ **Mihon backups**: import a `.tachibk` (favorites, read chapters, AniList links; missing extensions
+  get installed automatically) and export your library to restore it in Mihon.
+- 🤖 **MCP server**: Claude Code, Codex and other agents can search, browse your library, mark chapters
+  and open the reader in a pane next to the chat ([`docs/mcp.md`](docs/mcp.md)).
+- 🐢 **Polite to services**: rate limiting and caching for both AniList and the sources.
+- 🌐 **English and Spanish**: follows the system language (Spanish if the system is in Spanish, English
+  otherwise).
+- 🐧🪟 **Linux and Windows**, both tested in CI.
 
-## Capturas
+## Screenshots
 
-| Inicio | Búsqueda global |
+| Home | Global search |
 |---|---|
-| ![Pantalla de inicio con el logo y el menú](assets/screenshots/inicio.png) | ![Búsqueda en todas las fuentes a la vez](assets/screenshots/busqueda.png) |
-| **Capítulos** (los leídos, apagados) | **Lector** (Sixel) |
-| ![Lista de capítulos con los leídos marcados](assets/screenshots/capitulos.png) | ![Lector de páginas](assets/screenshots/lector.png) |
-| **Biblioteca** | **Vincular con AniList** |
-| ![Biblioteca de favoritos con su ficha](assets/screenshots/biblioteca.png) | ![Elegir la obra de AniList](assets/screenshots/anilist.png) |
-| **Backup de Mihon** | **Añadir extensiones** |
-| ![Importar y exportar backups de Mihon](assets/screenshots/backup.png) | ![Catálogo de extensiones de tus repositorios](assets/screenshots/anadir_extensiones.png) |
+| ![Home screen with the logo and menu](assets/screenshots/en/inicio.png) | ![Searching every source at once](assets/screenshots/en/busqueda.png) |
+| **Chapters** (read ones dimmed) | **Reader** (Sixel) |
+| ![Chapter list with read chapters marked](assets/screenshots/en/capitulos.png) | ![Page reader](assets/screenshots/en/lector.png) |
+| **Library** | **Link to AniList** |
+| ![Favorites library with details](assets/screenshots/en/biblioteca.png) | ![Picking the AniList entry](assets/screenshots/en/anilist.png) |
+| **Mihon backup** | **Add extensions** |
+| ![Importing and exporting Mihon backups](assets/screenshots/en/backup.png) | ![Extension catalog from your repositories](assets/screenshots/en/anadir_extensiones.png) |
 
-**Con un agente (MCP):** el lector se abre en un panel al lado del chat.
+**With an agent (MCP):** the reader opens in a pane next to the chat.
 
-![Un agente de terminal abre Han Thỏ en un panel lateral](assets/screenshots/mcp.png)
+![A terminal agent opens Han Thỏ in a side pane](assets/screenshots/en/mcp.png)
 
-<sub>Capturas generadas desde la propia TUI con `python tools/screenshots.py`; la página del lector
-es un dibujo de ejemplo.</sub>
+<sub>Screenshots rendered from the TUI itself with `python tools/screenshots.py`; the reader page is a
+sample drawing.</sub>
 
-## Requisitos
+## Requirements
 
-- **Java 21** (JDK) para compilar y correr `ext-host`.
-- **Rust** estable (edición 2024).
-- Una terminal con imágenes:
+- **Java 21** (JDK) to build and run `ext-host`.
+- **Rust** stable (2024 edition).
+- A terminal that can show images:
 
-  | Protocolo | Terminales |
+  | Protocol | Terminals |
   |---|---|
-  | **Sixel** (recomendado) | Windows Terminal ≥ 1.22, foot, WezTerm, Konsole, xterm (`-ti vt340`), mlterm |
+  | **Sixel** (recommended) | Windows Terminal ≥ 1.22, foot, WezTerm, Konsole, xterm (`-ti vt340`), mlterm |
   | **Kitty** | kitty, Ghostty, WezTerm |
   | iTerm2 | iTerm2, WezTerm |
-  | Bloques de color | cualquier terminal con color (fallback, se ve pixelado) |
+  | Colored blocks | any terminal with color (fallback, looks pixelated) |
 
-## Instalación
+## Installation
 
-Por ahora se compila desde el código. Son dos piezas: `ext-host` (Kotlin) y `reader` (Rust).
-El reader encuentra y lanza el host solo.
+For now it's built from source. There are two pieces: `ext-host` (Kotlin) and `reader` (Rust).
+The reader finds and starts the host by itself.
 
 ### Linux
 
@@ -112,7 +115,7 @@ cd mangaterm
 
 ### Windows
 
-En PowerShell:
+In PowerShell:
 
 ```powershell
 winget install EclipseAdoptium.Temurin.21.JDK Rustlang.Rustup Git.Git Microsoft.WindowsTerminal
@@ -125,208 +128,207 @@ cd ext-host; .\gradlew.bat installDist; cd ..
 cd reader; cargo build --release; cd ..
 ```
 
-Usa **Windows Terminal** (la consola clásica `conhost` no muestra imágenes).
+Use **Windows Terminal** (the classic `conhost` console can't show images).
 
-El binario queda en `reader/target/release/hantho` (`hantho.exe` en Windows). Si lo mueves
-fuera del repo, define `HANTHO_HOST_LIB` apuntando a `ext-host/build/install/ext-host/lib`.
+The binary ends up in `reader/target/release/hantho` (`hantho.exe` on Windows). If you move it out of
+the repo, set `HANTHO_HOST_LIB` to `ext-host/build/install/ext-host/lib`.
 
-## Uso
+## Usage
 
 ```bash
 hantho
 ```
 
-La primera vez no hay extensiones: entra en **Añadir extensiones**, pega la URL de un repositorio y
-elige las que quieras. Vale la URL de su `index.pb` o `index.min.json`, la del repo en GitHub o un
-enlace `tachiyomi://add-repo`. Han Thỏ carga las extensiones como `.jar`, así que el repositorio
-tiene que publicarlas también en ese formato (como hace el de Keiyoushi); los que solo traen `.apk`
-no sirven.
+The first time there are no extensions: open **Add extensions**, paste a repository URL and pick the
+ones you want. It accepts the URL of its `index.pb` or `index.min.json`, the GitHub repo or a
+`tachiyomi://add-repo` link. Han Thỏ loads extensions as `.jar`, so the repository has to publish them
+in that format too (as Keiyoushi's does); `.apk`-only repositories won't work.
 
-Lo mismo desde la línea de comandos:
+The same from the command line:
 
 ```bash
-hantho ext repo add <url-del-repositorio>
-hantho ext install --lang es   # todas las extensiones en español
+hantho ext repo add <repository-url>
+hantho ext install --lang en   # every English extension
 ```
 
-Desde la línea de comandos, sin TUI:
+From the command line, without the TUI:
 
-| Comando | Qué hace |
+| Command | What it does |
 |---|---|
-| `hantho search "grand blue" [--lang es]` | Busca en todas las fuentes instaladas |
-| `hantho ext repo add\|remove <url>` / `ext repo list` | Gestiona tus repositorios de extensiones |
-| `hantho ext update` | Descarga el catálogo más reciente de tus repositorios |
-| `hantho ext find [texto] [--lang es] [--sfw]` | Busca extensiones en el catálogo |
-| `hantho ext install <nombre…> [--lang es] [--sfw]` | Instala por nombre/paquete o todas las de un idioma |
-| `hantho ext list` / `ext remove <paquete>` | Lista o desinstala extensiones |
-| `hantho anilist login\|status\|logout` | Gestiona la cuenta de AniList (login por navegador) |
-| `hantho open "título" [--continue\|--chapter N] [--side]` | Abre un favorito directamente en el lector (`--side`: en un panel al lado) |
-| `hantho backup import <archivo.tachibk>` | Importa un backup de Mihon |
-| `hantho backup export [--out archivo]` | Exporta la biblioteca a un `.tachibk` para Mihon |
-| `hantho mcp` | Servidor MCP por stdio para agentes ([`docs/mcp.md`](docs/mcp.md)) |
+| `hantho search "grand blue" [--lang en]` | Search every installed source |
+| `hantho ext repo add\|remove <url>` / `ext repo list` | Manage your extension repositories |
+| `hantho ext update` | Download the latest catalog from your repositories |
+| `hantho ext find [text] [--lang en] [--sfw]` | Search the extension catalog |
+| `hantho ext install <name…> [--lang en] [--sfw]` | Install by name/package, or every extension in a language |
+| `hantho ext list` / `ext remove <package>` | List or uninstall extensions |
+| `hantho anilist login\|status\|logout` | Manage the AniList account (browser login) |
+| `hantho open "title" [--continue\|--chapter N] [--side]` | Open a favorite straight in the reader (`--side`: in a side pane) |
+| `hantho backup import <file.tachibk>` | Import a Mihon backup |
+| `hantho backup export [--out file]` | Export the library to a `.tachibk` for Mihon |
+| `hantho mcp` | MCP server over stdio for agents ([`docs/mcp.md`](docs/mcp.md)) |
 
-### Teclas
+### Keys
 
-En todas las listas funcionan `↑`/`↓` y `k`/`j`; `esc` o `q` vuelve atrás; `ctrl+c` sale.
+Every list supports `↑`/`↓` and `k`/`j`; `esc` or `q` goes back; `ctrl+c` quits.
 
-| Pantalla | Teclas |
+| Screen | Keys |
 |---|---|
-| Inicio | `1`–`7` o `enter` elegir · `/` buscar · `q` salir |
-| Añadir extensiones | `enter` instalar, actualizar o quitar · `/` filtrar · `l` idioma · `n` ocultar NSFW · `r` añadir repositorio · `u` actualizar catálogo |
-| Biblioteca | `enter` abrir · `d` quitar · `/` buscar |
-| Búsqueda | escribe y pulsa `enter` · `tab`/`↓` ir a resultados · `/` editar · `b` biblioteca |
-| Manga | `enter` leer · `c` continuar · `f` favorito · `e` estado · `a` vincular/sincronizar AniList · `A` re-vincular · `r` recargar |
-| Capítulos | `m` marcar/desmarcar leído · `M` marcar este y los anteriores · `/` filtrar · `#` ir al capítulo N · `[`/`]` ±100 · `g`/`G` primero/último · `o` invertir orden |
-| Backup Mihon | `enter` exportar o importar el archivo elegido · `r` buscar archivos de nuevo |
-| AniList | `l` iniciar sesión · `o` cerrar sesión · `d` registrar la app (solo si falta el client ID) |
-| Lector | `→` `espacio` `l` siguiente · `←` `h` anterior · `n`/`p` capítulo siguiente/anterior · `g`/`G` primera/última página |
+| Home | `1`–`7` or `enter` choose · `/` search · `q` quit |
+| Add extensions | `enter` install, update or remove · `/` filter · `l` language · `n` hide NSFW · `r` add repository · `u` update catalog |
+| Library | `enter` open · `d` remove · `/` search |
+| Search | type and press `enter` · `tab`/`↓` go to results · `/` edit · `b` library |
+| Manga | `enter` read · `c` continue · `f` favorite · `e` status · `a` link/sync AniList · `A` re-link · `r` reload |
+| Chapters | `m` mark/unmark read · `M` mark this one and all before · `/` filter · `#` go to chapter N · `[`/`]` ±100 · `g`/`G` first/last · `o` reverse order |
+| Mihon backup | `enter` export, or import the selected file · `r` look for files again |
+| AniList | `l` log in · `o` log out · `d` register the app (only if the client ID is missing) |
+| Reader | `→` `space` `l` next · `←` `h` previous · `n`/`p` next/previous chapter · `g`/`G` first/last page |
 
-### Variables de entorno
+### Environment variables
 
-| Variable | Para qué |
+| Variable | What for |
 |---|---|
-| `HANTHO_LANG` | Idioma: `es` o `en` (por defecto, el del sistema: español si está en español, inglés si no) |
-| `HANTHO_HOME` | Carpeta de datos (por defecto `~/.hantho`) |
-| `HANTHO_PROTOCOL` | Forzar `sixel`, `kitty`, `iterm2` o `halfblocks` |
-| `HANTHO_FONT` | Tamaño de celda en píxeles, p. ej. `10x20`, si la detección falla |
-| `HANTHO_HOST_LIB` | Ruta a `ext-host/lib` si el binario no está dentro del repo |
-| `HANTHO_ANILIST_CLIENT_ID` | Client ID de AniList propio (solo si tu binario no trae uno) |
-| `JAVA_HOME` | JVM a usar (si no, `java` del `PATH`) |
+| `HANTHO_LANG` | Language: `es` or `en` (default: the system's, Spanish if it's Spanish, English otherwise) |
+| `HANTHO_HOME` | Data folder (default `~/.hantho`) |
+| `HANTHO_PROTOCOL` | Force `sixel`, `kitty`, `iterm2` or `halfblocks` |
+| `HANTHO_FONT` | Cell size in pixels, e.g. `10x20`, if detection fails |
+| `HANTHO_HOST_LIB` | Path to `ext-host/lib` if the binary isn't inside the repo |
+| `HANTHO_ANILIST_CLIENT_ID` | Your own AniList client ID (only if your binary doesn't ship one) |
+| `JAVA_HOME` | JVM to use (otherwise `java` from `PATH`) |
 
-> El proyecto antes se llamaba *mangaterm*. Si tienes datos en `~/.mangaterm`, se mueven solos a
-> `~/.hantho` la primera vez que abras `hantho`.
+> The project used to be called *mangaterm*. If you have data in `~/.mangaterm`, it's moved to
+> `~/.hantho` automatically the first time you run `hantho`.
 
 ## AniList
 
-1. **Inicia sesión.** En la TUI, ve a *AniList* desde el menú y pulsa `l` (o ejecuta
-   `hantho anilist login`). Se abre el navegador, pulsas *Approve* y ya está: no hay que copiar ni
-   pegar nada, ni salir de la TUI. `o` cierra la sesión.
-2. **Vincula cada manga.** Tener la cuenta conectada no basta: Han Thỏ tiene que saber qué obra de
-   AniList es cada favorito (el mismo título puede tener manga, novela y spin-offs). Al añadir un
-   favorito se vincula solo si el título coincide exactamente; si no, abre el manga y pulsa `a` para
-   elegir la obra (`A` la vuelve a elegir). Desde un agente, la herramienta MCP `link_anilist`.
-3. **Lee.** Cada capítulo que terminas o marcas como leído actualiza AniList automáticamente.
-   `a` también fuerza un envío, por ejemplo después de cambiar el estado con `e`.
+1. **Log in.** In the TUI, open *AniList* from the menu and press `l` (or run `hantho anilist login`).
+   The browser opens, you click *Approve* and you're done: nothing to copy or paste, and no need to
+   leave the TUI. `o` logs out.
+2. **Link each manga.** Having the account connected isn't enough: Han Thỏ needs to know which AniList
+   entry each favorite is (the same title can have a manga, a novel and spin-offs). Adding a favorite
+   links it automatically when the title matches exactly; otherwise open the manga and press `a` to
+   pick the entry (`A` picks it again). From an agent, use the `link_anilist` MCP tool.
+3. **Read.** Every chapter you finish or mark as read updates AniList automatically. `a` also forces a
+   sync, for example after changing the status with `e`.
 
-El progreso **nunca retrocede**: si AniList tiene más capítulos marcados que Han Thỏ, se conserva
-el de AniList. El token queda en `~/.hantho/anilist.json` (permisos `600` en Linux) y no sale de
-tu máquina más que hacia AniList.
+Progress **never goes backwards**: if AniList has more chapters marked than Han Thỏ, AniList's is kept.
+The token is stored in `~/.hantho/anilist.json` (`600` permissions on Linux) and never leaves your
+machine except to talk to AniList.
 
 <details>
-<summary><b>Cómo funciona el login</b></summary>
+<summary><b>How login works</b></summary>
 
-Es el *implicit grant* de OAuth de AniList. Durante el login, Han Thỏ escucha en
-`http://localhost:47913/callback`, **solo en loopback**. AniList redirige ahí con el token en el
-fragmento de la URL (`#access_token=…`), que nunca viaja por la red: la página lo lee, se lo pasa al
-servidor local y lo borra del historial del navegador. El servidor se cierra en cuanto recibe el token,
-o a los 5 minutos.
+It's AniList's OAuth *implicit grant*. During login, Han Thỏ listens on
+`http://localhost:47913/callback`, **on loopback only**. AniList redirects there with the token in the
+URL fragment (`#access_token=…`), which never travels over the network: the page reads it, hands it to
+the local server and removes it from the browser history. The server shuts down as soon as it gets the
+token, or after 5 minutes.
 
 </details>
 
 <details>
-<summary><b>Si tu binario no trae client ID (forks, builds propios)</b></summary>
+<summary><b>If your binary has no client ID (forks, custom builds)</b></summary>
 
-AniList exige que la app esté registrada. Los binarios del proyecto traen su client ID embebido (en
-este flujo no hay secreto, así que el ID es público), y el usuario final no registra nada. Si
-compilas un fork sin ID, la pantalla de AniList te guía para hacer el registro una sola vez:
+AniList requires apps to be registered. The project's binaries ship their client ID (this flow has no
+secret, so the ID is public) and end users don't register anything. If you build a fork without an ID,
+the AniList screen walks you through registering once:
 
-1. `d` abre <https://anilist.co/settings/developer> → *Create New Client*.
+1. `d` opens <https://anilist.co/settings/developer> → *Create New Client*.
 2. Name `Han Thỏ`, Redirect URL `http://localhost:47913/callback`.
-3. Pega el ID en la pantalla y pulsa `enter`. Se guarda para la próxima vez.
+3. Paste the ID on the screen and press `enter`. It's saved for next time.
 
-También sirve `hantho anilist login --client-id <ID>` o la variable `HANTHO_ANILIST_CLIENT_ID`.
+`hantho anilist login --client-id <ID>` or the `HANTHO_ANILIST_CLIENT_ID` variable also work.
 
 </details>
 
-**Rate limiting y caché.** Han Thỏ hace como mucho 1 petición cada 2 s a AniList (con ráfagas de 5),
-respeta `Retry-After` y `X-RateLimit-Remaining`, y reintenta con espera ante un 429. Las búsquedas en
-AniList se cachean una semana. Para las fuentes: las búsquedas se cachean 10 minutos y los detalles
-y capítulos 30 minutos (`r` fuerza la recarga).
+**Rate limiting and caching.** Han Thỏ makes at most 1 request every 2 s to AniList (bursts of 5),
+honors `Retry-After` and `X-RateLimit-Remaining`, and backs off and retries on a 429. AniList searches
+are cached for a week. For sources: searches are cached for 10 minutes, details and chapters for 30
+minutes (`r` forces a reload).
 
-## Cómo funciona
+## How it works
 
 ```mermaid
 flowchart LR
     subgraph reader["reader (Rust)"]
-        TUI["TUI ratatui"] --> Core["búsqueda · biblioteca · caché"]
-        Core --> Render["render Sixel propio"]
-        Core --> AL["cliente AniList"]
+        TUI["ratatui TUI"] --> Core["search · library · cache"]
+        Core --> Render["custom Sixel renderer"]
+        Core --> AL["AniList client"]
     end
     subgraph host["ext-host (Kotlin, JVM)"]
-        Loader["cargador de JARs"] --> API["extensions-lib 1.6<br/>OkHttp · Jsoup · Injekt"]
-        API --> Shims["shims de Android"]
+        Loader["JAR loader"] --> API["extensions-lib 1.6<br/>OkHttp · Jsoup · Injekt"]
+        API --> Shims["Android shims"]
     end
-    Core <-- "JSON por stdin/stdout" --> Loader
-    Loader --> Ext["extensiones de Mihon<br/>(.jar)"]
-    Ext -- HTTP --> Sitios[("sitios de manga")]
+    Core <-- "JSON over stdin/stdout" --> Loader
+    Loader --> Ext["Mihon extensions<br/>(.jar)"]
+    Ext -- HTTP --> Sites[("manga sites")]
     AL -- GraphQL --> AniList[("AniList")]
     Render --> Term["terminal<br/>Sixel / Kitty"]
 ```
 
-- **Catálogo.** Cada repositorio que añades publica un índice (`index.pb`, protobuf con gzip, el
-  formato de Keiyoushi) con sus extensiones y fuentes. Han Thỏ lo descarga e instala los `.jar` de
-  las extensiones que eliges en `~/.hantho`.
-- **ext-host.** Las extensiones son clases JVM normales (ya convertidas desde dex), pero esperan
-  vivir en Android. `ext-host` provee la implementación real de la API
-  [`extensions-lib`](https://github.com/keiyoushi/extensions-lib) 1.6 (la publicada son solo stubs),
-  más OkHttp, Jsoup, kotlinx-serialization, Injekt y *shims* mínimos de las clases de Android que usan
-  (`Context`, `SharedPreferences`, `Uri`, `Base64`, `androidx.preference`…).
-- **Protocolo.** El reader lanza el host como subproceso y le habla con una línea JSON por petición
-  (`{"id":1,"op":"ping"}` → `{"id":1,"result":"pong"}`). Las búsquedas a muchas fuentes corren en
-  paralelo y van llegando a medida que responden.
-- **Render.** `ratatui-image` detecta el protocolo y el tamaño de celda, pero escala con vecino más
-  cercano y usa un dithering fuerte que en manga produce moiré. Por eso Han Thỏ codifica su propio
-  Sixel: escala con Lanczos3 al tamaño exacto en píxeles y usa 64 grises sin dithering para páginas en
-  blanco y negro (o 256 colores con dithering suave para color). Una página tarda ~25 ms.
+- **Catalog.** Every repository you add publishes an index (`index.pb`, gzipped protobuf, Keiyoushi's
+  format) with its extensions and sources. Han Thỏ downloads it and installs the `.jar` of the
+  extensions you pick into `~/.hantho`.
+- **ext-host.** Extensions are regular JVM classes (already converted from dex), but they expect to
+  live on Android. `ext-host` provides the real implementation of the
+  [`extensions-lib`](https://github.com/keiyoushi/extensions-lib) 1.6 API (the published one is only
+  stubs), plus OkHttp, Jsoup, kotlinx-serialization, Injekt and minimal *shims* of the Android classes
+  they use (`Context`, `SharedPreferences`, `Uri`, `Base64`, `androidx.preference`…).
+- **Protocol.** The reader starts the host as a subprocess and talks to it with one JSON line per
+  request (`{"id":1,"op":"ping"}` → `{"id":1,"result":"pong"}`). Searches across many sources run in
+  parallel and stream in as they respond.
+- **Rendering.** `ratatui-image` detects the protocol and the cell size, but it scales with nearest
+  neighbor and uses heavy dithering, which causes moiré on manga. That's why Han Thỏ encodes its own
+  Sixel: it scales with Lanczos3 to the exact pixel size and uses 64 grays without dithering for
+  black-and-white pages (or 256 colors with light dithering for color). A page takes ~25 ms.
 
-Más detalles técnicos en [`NOTES.md`](NOTES.md).
+More technical details in [`NOTES.md`](NOTES.md) (in Spanish).
 
-## Limitaciones conocidas
+## Known limitations
 
-- **Cloudflare.** Las fuentes protegidas por el desafío de Cloudflare no funcionan: en Android se
-  resuelven con un WebView, y aquí no hay. En las pruebas, ~12 de 165 fuentes en español fallaron por esto.
-- **Shims de Android incompletos.** Algunas extensiones usan clases que todavía no están
+- **Cloudflare.** Sources behind Cloudflare's challenge don't work: on Android they're solved with a
+  WebView, and there's none here. In testing, ~12 of 165 Spanish sources failed because of this.
+- **Incomplete Android shims.** Some extensions use classes that aren't there yet
   (`android.webkit.CookieManager`, `android.util.LruCache`, `android.graphics.ColorMatrix`,
-  `Uri.Builder`, `Dispatchers.Main`…) y fallan al cargar o al buscar.
-- **Sin pantalla de ajustes de extensiones.** Las preferencias de cada fuente quedan en sus valores
-  por defecto.
-- **Sin descargas offline** ni aviso de capítulos nuevos (por ahora).
-- **Panel lateral del MCP**: necesita una terminal que se pueda dividir (Windows Terminal, tmux, WezTerm,
-  zellij o kitty); si no, el lector se abre en una ventana nueva.
-- **macOS** no está probado; debería funcionar, pero no hay CI.
+  `Uri.Builder`, `Dispatchers.Main`…) and fail to load or to search.
+- **No extension settings screen.** Each source's preferences stay at their defaults.
+- **No offline downloads** and no new-chapter notifications (yet).
+- **MCP side pane**: needs a terminal that can split (Windows Terminal, tmux, WezTerm, zellij or
+  kitty); otherwise the reader opens in a new window.
+- **macOS** is untested; it should work, but there's no CI for it.
 
-## Aviso legal
+## Legal notice
 
-Han Thỏ es un **lector**: no aloja, distribuye ni indexa contenido. Todo el material lo sirven
-sitios de terceros a través de extensiones de terceros. Han Thỏ no trae ningún repositorio ni extensión: cada
-usuario añade los que elige, y Han Thỏ los descarga tal cual, sin modificarlos. Los autores de Han Thỏ no tienen relación con esos sitios ni con las
-extensiones, y no se hacen responsables de su contenido ni por su legalidad en tu país.
+Han Thỏ is a **reader**: it doesn't host, distribute or index any content. All material is served by
+third-party sites through third-party extensions. Han Thỏ ships no repository or extension: each user
+adds the ones they choose, and Han Thỏ downloads them as they are, without modifying them. Han Thỏ's
+authors have no relationship with those sites or extensions, and take no responsibility for their
+content or for its legality in your country.
 
-Respeta los derechos de autor y, cuando puedas, apoya a los autores leyendo y comprando por canales
-oficiales. Han Thỏ no está afiliado a Mihon, Tachiyomi, Keiyoushi ni AniList.
+Respect copyright and, whenever you can, support the authors by reading and buying through official
+channels. Han Thỏ is not affiliated with Mihon, Tachiyomi, Keiyoushi or AniList.
 
-## Contribuir
+## Contributing
 
-¡Bienvenido! Echa un vistazo a [`CONTRIBUTING.md`](CONTRIBUTING.md). Aquí no se aceptan peticiones de fuentes nuevas:
-eso va al repositorio de extensiones que uses.
+Welcome! Take a look at [`CONTRIBUTING.md`](CONTRIBUTING.md). Requests for new sources aren't accepted
+here: those go to the extension repository you use.
 
-## Créditos
+## Credits
 
-- [**Keiyoushi**](https://github.com/keiyoushi/extensions) — las extensiones y la API
-  `extensions-lib` que `ext-host` implementa.
-- [**Mihon**](https://github.com/mihonapp/mihon) y el difunto **Tachiyomi** — el ecosistema de
-  extensiones sobre el que se apoya todo esto.
-- [**ratatui**](https://ratatui.rs) y [**ratatui-image**](https://github.com/benjajaja/ratatui-image) — la TUI
-  y la detección de protocolos gráficos.
+- [**Keiyoushi**](https://github.com/keiyoushi/extensions): the extensions and the `extensions-lib`
+  API that `ext-host` implements.
+- [**Mihon**](https://github.com/mihonapp/mihon) and the late **Tachiyomi**: the extension ecosystem
+  all of this builds on.
+- [**ratatui**](https://ratatui.rs) and [**ratatui-image**](https://github.com/benjajaja/ratatui-image):
+  the TUI and graphics protocol detection.
 - [**icy_sixel**](https://github.com/mkrueger/icy_sixel), [**image**](https://github.com/image-rs/image),
   [**tokio**](https://tokio.rs), [**reqwest**](https://github.com/seanmonstar/reqwest), [**clap**](https://github.com/clap-rs/clap),
   [**prost**](https://github.com/tokio-rs/prost).
 - [**OkHttp**](https://square.github.io/okhttp/), [**Jsoup**](https://jsoup.org),
-  [**kotlinx.serialization**](https://github.com/Kotlin/kotlinx.serialization) e
-  [**Injekt**](https://github.com/null2264/injekt) (fork de null2264) en el host.
-- [**AniList**](https://anilist.co) por su API pública.
+  [**kotlinx.serialization**](https://github.com/Kotlin/kotlinx.serialization) and
+  [**Injekt**](https://github.com/null2264/injekt) (null2264's fork) in the host.
+- [**AniList**](https://anilist.co) for its public API.
 
-## Licencia
+## License
 
-[Apache License 2.0](LICENSE). Las extensiones de Keiyoushi y `extensions-lib` también son Apache-2.0
-y pertenecen a sus autores.
+[Apache License 2.0](LICENSE). Keiyoushi's extensions and `extensions-lib` are also Apache-2.0 and
+belong to their authors.

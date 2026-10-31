@@ -1,95 +1,98 @@
-# Han Thỏ como servidor MCP
+# Han Thỏ as an MCP server
 
-`hantho mcp` expone Han Thỏ por [MCP](https://modelcontextprotocol.io) (stdio). Así un agente
-de terminal —Claude Code, Codex, Hermes, pi o cualquier cliente MCP— puede buscar manga, consultar
-tu biblioteca, marcar capítulos y **abrir el lector en un panel al lado del chat**.
+**English** · [Español](mcp.es.md)
 
-![Un agente de terminal abre Han Thỏ en un panel lateral](../assets/screenshots/mcp.png)
+`hantho mcp` exposes Han Thỏ over [MCP](https://modelcontextprotocol.io) (stdio). That way a terminal
+agent (Claude Code, Codex, Hermes, pi or any MCP client) can search for manga, browse your library,
+mark chapters and **open the reader in a pane next to the chat**.
 
-## Herramientas
+![A terminal agent opens Han Thỏ in a side pane](../assets/screenshots/en/mcp.png)
 
-| Herramienta | Qué hace |
+## Tools
+
+| Tool | What it does |
 |---|---|
-| `search_manga` | Busca un título en todas las fuentes instaladas a la vez (hasta ~25 s) |
-| `library` | Tus favoritos con estado, progreso, último capítulo y vínculo con AniList |
-| `chapters` | Capítulos de un manga, con cuáles están leídos (`from`, `to`, `unread_only`, `limit`) |
-| `mark_read` | Marca o desmarca un capítulo, o todos hasta un número; actualiza AniList si está vinculado |
-| `set_favorite` | Añade o quita un manga de favoritos; al añadirlo lo vincula con AniList si el título coincide exactamente |
-| `open_reader` | Abre el lector en un panel lateral (o en una ventana nueva), por defecto donde te quedaste |
-| `link_anilist` | Vincula un favorito con su obra de AniList y sincroniza; si hay dudas devuelve candidatas para elegir |
-| `sync_anilist` | Envía a AniList el estado y el progreso de un favorito vinculado |
+| `search_manga` | Search a title across every installed source at once (up to ~25 s) |
+| `library` | Your favorites with status, progress, last chapter and AniList link |
+| `chapters` | A manga's chapters, showing which are read (`from`, `to`, `unread_only`, `limit`) |
+| `mark_read` | Mark or unmark a chapter, or every chapter up to a number; updates AniList if linked |
+| `set_favorite` | Add or remove a manga from favorites; when adding, links it to AniList on an exact title match |
+| `open_reader` | Open the reader in a side pane (or a new window), by default where you left off |
+| `link_anilist` | Link a favorite to its AniList entry and sync; if unsure, returns candidates to pick from |
+| `sync_anilist` | Send a linked favorite's status and progress to AniList |
 
-Ejemplos de lo que puedes pedirle al agente:
+Things you can ask the agent:
 
-- «Ábreme Grand Blue por donde iba»
-- «¿En qué capítulo voy de cada manga de mi biblioteca?»
-- «Busca *Dungeon Meshi* en fuentes en español y añádelo a favoritos»
-- «Marca como leídos los capítulos de Grand Blue hasta el 60»
-- «Vincula Grand Blue con mi AniList»
+- "Open Grand Blue where I left off"
+- "Which chapter am I on for each manga in my library?"
+- "Search for *Dungeon Meshi* in English sources and add it to favorites"
+- "Mark Grand Blue chapters up to 60 as read"
+- "Link Grand Blue to my AniList"
 
-> Tener la cuenta de AniList conectada no basta: cada manga se vincula una vez con su obra de
-> AniList (el mismo título puede tener manga, novela y spin-offs). Al añadir un favorito se vincula
-> solo si el título coincide exactamente; si no, `link_anilist` (o la tecla `a` en la TUI).
+> Having the AniList account connected isn't enough: each manga is linked once to its AniList entry
+> (the same title can have a manga, a novel and spin-offs). Adding a favorite links it automatically on
+> an exact title match; otherwise, `link_anilist` (or the `a` key in the TUI).
 
-## Panel lateral
+The tool descriptions and replies follow the system language too (Spanish or English; `HANTHO_LANG`
+forces one).
 
-`open_reader` divide la ventana de la terminal en la que corre el agente y abre Han Thỏ a la
-derecha:
+## Side pane
 
-| Terminal | Cómo |
+`open_reader` splits the terminal window the agent is running in and opens Han Thỏ on the right:
+
+| Terminal | How |
 |---|---|
-| Windows Terminal | `wt -w 0 split-pane` (las imágenes Sixel funcionan por panel) |
+| Windows Terminal | `wt -w 0 split-pane` (Sixel images work per pane) |
 | tmux | `tmux split-window -h` |
 | WezTerm | `wezterm cli split-pane --right` |
 | zellij | `zellij run --direction right` |
-| kitty | `kitty @ launch --location=vsplit` (requiere `allow_remote_control yes`) |
+| kitty | `kitty @ launch --location=vsplit` (needs `allow_remote_control yes`) |
 
-Si la terminal no se puede dividir, se abre una ventana nueva (`placement: "window"` lo fuerza).
-Lo mismo se puede hacer a mano: `hantho open "grand blue" --continue --side`.
+If the terminal can't be split, a new window opens instead (`placement: "window"` forces it).
+You can do the same by hand: `hantho open "grand blue" --continue --side`.
 
-La biblioteca y los capítulos leídos se comparten: si el agente marca algo mientras tienes la TUI
-abierta, la TUI lo recarga sola en un par de segundos.
+The library and read chapters are shared: if the agent marks something while the TUI is open, the TUI
+reloads it by itself within a couple of seconds.
 
-## Conectarlo
+## Connecting it
 
-Usa la ruta completa al binario. En Windows, por ejemplo,
-`C:\Users\<tú>\Documents\claude\mangaterm\reader\target\release\hantho.exe`; en Linux,
-`/ruta/al/repo/reader/target/release/hantho`.
+Use the full path to the binary. On Windows, for example,
+`C:\Users\<you>\Documents\claude\mangaterm\reader\target\release\hantho.exe`; on Linux,
+`/path/to/repo/reader/target/release/hantho`.
 
 ### Claude Code
 
 ```bash
-claude mcp add --scope user hantho -- /ruta/a/hantho mcp
+claude mcp add --scope user hantho -- /path/to/hantho mcp
 ```
 
 ### Codex CLI
 
-En `~/.codex/config.toml`:
+In `~/.codex/config.toml`:
 
 ```toml
 [mcp_servers.hantho]
-command = "/ruta/a/hantho"
+command = "/path/to/hantho"
 args = ["mcp"]
 ```
 
-### Otros clientes (formato `mcpServers`)
+### Other clients (`mcpServers` format)
 
 ```json
 {
   "mcpServers": {
-    "hantho": { "command": "/ruta/a/hantho", "args": ["mcp"] }
+    "hantho": { "command": "/path/to/hantho", "args": ["mcp"] }
   }
 }
 ```
 
-Si Java no está en el `PATH` del agente, añade la variable `JAVA_HOME` en la configuración del
-servidor (`"env": { "JAVA_HOME": "…" }`).
+If Java isn't on the agent's `PATH`, add the `JAVA_HOME` variable to the server config
+(`"env": { "JAVA_HOME": "…" }`).
 
-## Detalles
+## Details
 
-- JSON-RPC 2.0 por stdio, un mensaje por línea; versiones de protocolo `2025-06-18`,
-  `2025-03-26` y `2024-11-05`.
-- El host de extensiones (JVM) arranca con la primera herramienta que lo necesita y se reutiliza.
-- Las búsquedas y los capítulos usan la misma caché que la TUI, y AniList el mismo limitador de
-  pedidos.
-- Los diagnósticos van a stderr y los errores del host a `~/.hantho/host.log`.
+- JSON-RPC 2.0 over stdio, one message per line; protocol versions `2025-06-18`, `2025-03-26` and
+  `2024-11-05`.
+- The extension host (JVM) starts with the first tool that needs it and is reused afterwards.
+- Searches and chapters use the same cache as the TUI, and AniList the same rate limiter.
+- Diagnostics go to stderr and host errors to `~/.hantho/host.log`.

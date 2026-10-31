@@ -2579,18 +2579,24 @@ mod tests {
     fn fake_favorite(title: &str, status: Status, progress: i32, linked: bool, synced: bool) -> Favorite {
         Favorite {
             source_id: "1".into(),
-            source_name: "Manga TV".into(),
-            lang: "es".into(),
+            source_name: tr!("Manga TV", "MangaDex").into(),
+            lang: tr!("es", "en").into(),
             manga: Manga {
                 url: format!("/manga/{title}"),
                 title: title.into(),
-                description: Some("Iori Kitahara se muda a una ciudad costera para empezar la universidad y termina en un club de buceo muy particular.".into()),
+                description: Some(
+                    tr!(
+                        "Iori Kitahara se muda a una ciudad costera para empezar la universidad y termina en un club de buceo muy particular.",
+                        "Iori Kitahara moves to a seaside town to start university and ends up in a very peculiar diving club."
+                    )
+                    .into(),
+                ),
                 ..Default::default()
             },
             added_at: 0,
             status,
             progress,
-            last_read: Some(LastRead { chapter_url: "/c/12".into(), chapter_name: "Capítulo 12".into(), page: 7 }),
+            last_read: Some(LastRead { chapter_url: "/c/12".into(), chapter_name: tr!("Capítulo 12", "Chapter 12").into(), page: 7 }),
             anilist: linked.then(|| AniListLink {
                 media_id: 87395,
                 title: "Grand Blue".into(),
@@ -2618,19 +2624,19 @@ mod tests {
 
         let mut terminal = Terminal::new(TestBackend::new(120, 30)).unwrap();
         app.screen = Screen::Library;
-        app.status = "★ añadido a favoritos".into();
+        app.status = tr!("★ añadido a favoritos", "★ added to favorites").into();
         terminal.draw(|f| app.draw(f)).unwrap();
         theme::dump_buffer(terminal.backend().buffer(), &format!("{dir}/library.json"));
 
         let fav = app.library.favorites[0].clone();
-        app.current = Some((LoadedSource { info: SourceInfo { id: "1".into(), name: "Manga TV".into(), lang: "es".into(), base_url: None, supports_latest: true } }, fav.manga.clone()));
+        app.current = Some((LoadedSource { info: SourceInfo { id: "1".into(), name: tr!("Manga TV", "MangaDex").into(), lang: tr!("es", "en").into(), base_url: None, supports_latest: true } }, fav.manga.clone()));
         let chapters: Vec<Chapter> = (1..=20)
             .rev()
-            .map(|n| Chapter { url: format!("/c/{n}"), name: format!("Capítulo {n}"), chapter_number: n as f32, scanlator: Some("Plot Twist No Fansub".into()), ..Default::default() })
+            .map(|n| Chapter { url: format!("/c/{n}"), name: trf!("Capítulo {n}", "Chapter {n}"), chapter_number: n as f32, scanlator: Some(tr!("Plot Twist No Fansub", "Kodansha").into()), ..Default::default() })
             .collect();
         let mut manga = fav.manga.clone();
         manga.author = Some("Kenji Inoue, Kimitake Yoshioka".into());
-        manga.genre = Some("Comedia, Recuentos de la vida, Seinen".into());
+        manga.genre = Some(tr!("Comedia, Recuentos de la vida, Seinen", "Comedy, Slice of Life, Seinen").into());
         let key = reads::key("1", &fav.manga.url);
         for c in chapters.iter().filter(|c| c.chapter_number <= 12.0) {
             app.reads.mark(&key, c);
@@ -2639,7 +2645,7 @@ mod tests {
         app.rebuild_chapter_view();
         app.chapters_state.select(Some(7));
         app.screen = Screen::Manga;
-        app.status = "✓ AniList: Leyendo · capítulo 12".into();
+        app.status = tr!("✓ AniList: Leyendo · capítulo 12", "✓ AniList: Reading · chapter 12").into();
         terminal.draw(|f| app.draw(f)).unwrap();
         theme::dump_buffer(terminal.backend().buffer(), &format!("{dir}/manga.json"));
 
@@ -2649,22 +2655,26 @@ mod tests {
         ];
         app.backup_state.select(Some(1));
         app.backup_report = vec![
-            "✓ 48 favoritos nuevos · 2 ya estaban".into(),
-            "✓ 3120 capítulos marcados como leídos".into(),
-            "✓ 31 vinculados con AniList".into(),
-            "! sin extensión en tus repositorios: Fuente Rara".into(),
-            "✓ 6 extensiones instaladas y cargadas".into(),
+            tr!("✓ 48 favoritos nuevos · 2 ya estaban", "✓ 48 new favorites · 2 already there").into(),
+            tr!("✓ 3120 capítulos marcados como leídos", "✓ 3120 chapters marked as read").into(),
+            tr!("✓ 31 vinculados con AniList", "✓ 31 linked to AniList").into(),
+            tr!("! sin extensión en tus repositorios: Fuente Rara", "! no extension in your repositories: Rare Source").into(),
+            tr!("✓ 6 extensiones instaladas y cargadas", "✓ 6 extensions installed and loaded").into(),
         ];
         app.screen = Screen::Backup;
-        app.status = "importación terminada ✿".into();
+        app.status = tr!("importación terminada ✿", "import finished ✿").into();
         terminal.draw(|f| app.draw(f)).unwrap();
         theme::dump_buffer(terminal.backend().buffer(), &format!("{dir}/backup.json"));
 
         // Inicio
         let src = |id: &str, name: &str| LoadedSource {
-            info: SourceInfo { id: id.into(), name: name.into(), lang: "es".into(), base_url: None, supports_latest: true },
+            info: SourceInfo { id: id.into(), name: name.into(), lang: tr!("es", "en").into(), base_url: None, supports_latest: true },
         };
-        app.sources = ["Manga TV", "LectorTMO", "Olympus Scanlation", "InManga", "Ikigai Mangas"]
+        let names = tr!(
+            ["Manga TV", "LectorTMO", "Olympus Scanlation", "InManga", "Ikigai Mangas"],
+            ["MangaDex", "Weeb Central", "MangaPark", "Bato.to", "Comick"]
+        );
+        app.sources = names
             .iter()
             .enumerate()
             .map(|(i, n)| src(&i.to_string(), n))
@@ -2710,7 +2720,7 @@ mod tests {
         app.input = "grand blue".into();
         app.editing = false;
         app.groups_state.select(Some(0));
-        app.status = "5 fuentes en 0,8 s".into();
+        app.status = tr!("5 fuentes en 0,8 s", "5 sources in 0.8 s").into();
         app.screen = Screen::Search;
         terminal.draw(|f| app.draw(f)).unwrap();
         theme::dump_buffer(terminal.backend().buffer(), &format!("{dir}/search.json"));
@@ -2729,24 +2739,42 @@ mod tests {
             ..Default::default()
         };
         app.add.repos = vec!["https://example.org/repo/index.pb".into()];
-        app.add.catalog = Some(vec![
-            cat_ext("Ikigai Mangas", &["es"], 12, 1),
-            cat_ext("InManga", &["es"], 12, 1),
-            cat_ext("Lector Manga", &["es"], 8, 2),
-            cat_ext("LectorTMO", &["es"], 13, 1),
-            cat_ext("Manga Crab", &["es"], 4, 1),
-            cat_ext("Manga TV", &["es"], 12, 1),
-            cat_ext("MangaDex", &["all"], 16, 2),
-            cat_ext("Mangas.in", &["es"], 6, 1),
-            cat_ext("Olympus Scanlation", &["es"], 12, 1),
-            cat_ext("Plot Twist No Fansub", &["es"], 3, 1),
-            cat_ext("Tu Manga Online", &["es"], 9, 2),
-            cat_ext("Visor Ikigai", &["es"], 5, 1),
-        ]);
-        app.add.lang = Some("es".into());
-        app.add.busy.insert("eu.kanade.tachiyomi.extension.es.mangacrab".into());
-        app.add.state.select(Some(3));
-        app.status = "instalando Manga Crab…".into();
+        let catalog = tr!(
+            [
+                ("Ikigai Mangas", 12, 1),
+                ("InManga", 12, 1),
+                ("Lector Manga", 8, 2),
+                ("LectorTMO", 13, 1),
+                ("Manga Crab", 4, 1),
+                ("Manga TV", 12, 1),
+                ("Mangas.in", 6, 1),
+                ("Olympus Scanlation", 12, 1),
+                ("Plot Twist No Fansub", 3, 1),
+                ("Tu Manga Online", 9, 2),
+                ("Visor Ikigai", 5, 1),
+            ],
+            [
+                ("Asura Scans", 6, 1),
+                ("Bato.to", 12, 1),
+                ("Comick", 12, 1),
+                ("Flame Comics", 4, 1),
+                ("MangaBuddy", 8, 2),
+                ("MangaDex", 12, 1),
+                ("MangaFire", 13, 1),
+                ("MangaPark", 12, 1),
+                ("Manganato", 3, 1),
+                ("Toonily", 9, 3),
+                ("Weeb Central", 12, 1),
+            ]
+        );
+        let lang = tr!("es", "en");
+        let mut catalog: Vec<catalog::Extension> = catalog.iter().map(|&(n, v, w)| cat_ext(n, &[lang], v, w)).collect();
+        catalog.push(cat_ext("Hitomi.la", &["all"], 16, 3));
+        app.add.catalog = Some(catalog);
+        app.add.lang = Some(lang.into());
+        app.add.busy.insert(tr!("eu.kanade.tachiyomi.extension.es.mangacrab", "eu.kanade.tachiyomi.extension.es.flamecomics").into());
+        app.add.state.select(Some(tr!(3, 6)));
+        app.status = tr!("instalando Manga Crab…", "installing Flame Comics…").into();
         app.screen = Screen::AddExtensions;
         terminal.draw(|f| app.draw(f)).unwrap();
         theme::dump_buffer(terminal.backend().buffer(), &format!("{dir}/add_extensions.json"));
@@ -2760,7 +2788,7 @@ mod tests {
 
         // AniList
         app.screen = Screen::AniList;
-        app.status = "conectado ✿".into();
+        app.status = tr!("conectado ✿", "logged in ✿").into();
         terminal.draw(|f| app.draw(f)).unwrap();
         theme::dump_buffer(terminal.backend().buffer(), &format!("{dir}/anilist.json"));
 
