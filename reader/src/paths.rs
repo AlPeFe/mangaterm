@@ -24,8 +24,14 @@ pub fn migrate_legacy() {
     }
 }
 
-pub fn index_file() -> PathBuf {
-    home().join("index.pb")
+/// Repositorios de extensiones que ha añadido el usuario.
+pub fn repos_file() -> PathBuf {
+    home().join("repos.json")
+}
+
+/// Índices descargados de cada repositorio.
+pub fn repos_dir() -> PathBuf {
+    home().join("repos")
 }
 
 pub fn extensions_dir() -> PathBuf {

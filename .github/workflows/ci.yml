@@ -54,5 +54,6 @@ jobs:
         env:
           HANTHO_HOME: ${{ runner.temp }}/hantho
         run: |
+          ./target/release/hantho ext repo add https://github.com/keiyoushi/extensions
           ./target/release/hantho ext install mangadex
           ./target/release/hantho search "grand blue"

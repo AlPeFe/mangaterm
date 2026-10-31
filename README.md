@@ -16,9 +16,9 @@
 
 ---
 
-**Han Thỏ** (en la terminal, `hantho`) es un lector de manga para la terminal. Busca en cientos de fuentes a la vez usando las
-mismas extensiones de [Keiyoushi](https://github.com/keiyoushi/extensions) que usa
-[Mihon](https://github.com/mihonapp/mihon) en Android, muestra las páginas como imágenes de verdad
+**Han Thỏ** (en la terminal, `hantho`) es un lector de manga para la terminal. Busca en todas tus fuentes a la vez usando las
+mismas extensiones que [Mihon](https://github.com/mihonapp/mihon) en Android (las del repositorio
+que tú añadas), muestra las páginas como imágenes de verdad
 (Sixel o Kitty) y lleva tu progreso a [AniList](https://anilist.co).
 
 ### ¿Por qué?
@@ -41,7 +41,8 @@ mismas extensiones de [Keiyoushi](https://github.com/keiyoushi/extensions) que u
 - 💗 **Biblioteca**: favoritos, estado de lectura (leyendo, en pausa, completado…), "continuar" donde lo dejaste.
 - ✓ **Capítulos leídos**: se marcan solos al terminar un capítulo y se ven apagados en la lista; en mangas
   de mil capítulos, filtra (`/`), salta a un número (`#`) o avanza de cien en cien.
-- 🧩 **Extensiones** de Keiyoushi: instalar por nombre o por idioma, buscar, actualizar, filtrar NSFW.
+- 🧩 **Extensiones**: como en Mihon, Han Thỏ no trae ninguna. Añades el repositorio que quieras y
+  desde *Añadir extensiones* filtras por nombre, idioma o NSFW e instalas con `enter`.
 - ☁️ **AniList**: login por navegador sin copiar nada; cada manga se vincula con su obra (solo si es una
   coincidencia exacta, o eligiéndola tú) y el progreso se envía al terminar capítulos. Nunca retrocede.
 - ⇄ **Backups de Mihon**: importa un `.tachibk` (favoritos, leídos, vínculos con AniList; instala solas las
@@ -60,8 +61,8 @@ mismas extensiones de [Keiyoushi](https://github.com/keiyoushi/extensions) que u
 | ![Lista de capítulos con los leídos marcados](assets/screenshots/capitulos.png) | ![Lector de páginas](assets/screenshots/lector.png) |
 | **Biblioteca** | **Vincular con AniList** |
 | ![Biblioteca de favoritos con su ficha](assets/screenshots/biblioteca.png) | ![Elegir la obra de AniList](assets/screenshots/anilist.png) |
-| **Backup de Mihon** | **Extensiones** |
-| ![Importar y exportar backups de Mihon](assets/screenshots/backup.png) | ![Extensiones instaladas](assets/screenshots/extensiones.png) |
+| **Backup de Mihon** | **Añadir extensiones** |
+| ![Importar y exportar backups de Mihon](assets/screenshots/backup.png) | ![Catálogo de extensiones de tus repositorios](assets/screenshots/anadir_extensiones.png) |
 
 **Con un agente (MCP):** el lector se abre en un panel al lado del chat.
 
@@ -131,8 +132,20 @@ fuera del repo, define `HANTHO_HOST_LIB` apuntando a `ext-host/build/install/ext
 ## Uso
 
 ```bash
-hantho ext install --lang es   # instala todas las extensiones en español
-hantho                         # abre la TUI
+hantho
+```
+
+La primera vez no hay extensiones: entra en **Añadir extensiones**, pega la URL de un repositorio y
+elige las que quieras. Vale la URL de su `index.pb` o `index.min.json`, la del repo en GitHub o un
+enlace `tachiyomi://add-repo`. Han Thỏ carga las extensiones como `.jar`, así que el repositorio
+tiene que publicarlas también en ese formato (como hace el de Keiyoushi); los que solo traen `.apk`
+no sirven.
+
+Lo mismo desde la línea de comandos:
+
+```bash
+hantho ext repo add <url-del-repositorio>
+hantho ext install --lang es   # todas las extensiones en español
 ```
 
 Desde la línea de comandos, sin TUI:
@@ -140,7 +153,8 @@ Desde la línea de comandos, sin TUI:
 | Comando | Qué hace |
 |---|---|
 | `hantho search "grand blue" [--lang es]` | Busca en todas las fuentes instaladas |
-| `hantho ext update` | Descarga el catálogo más reciente de Keiyoushi |
+| `hantho ext repo add\|remove <url>` / `ext repo list` | Gestiona tus repositorios de extensiones |
+| `hantho ext update` | Descarga el catálogo más reciente de tus repositorios |
 | `hantho ext find [texto] [--lang es] [--sfw]` | Busca extensiones en el catálogo |
 | `hantho ext install <nombre…> [--lang es] [--sfw]` | Instala por nombre/paquete o todas las de un idioma |
 | `hantho ext list` / `ext remove <paquete>` | Lista o desinstala extensiones |
@@ -156,7 +170,8 @@ En todas las listas funcionan `↑`/`↓` y `k`/`j`; `esc` o `q` vuelve atrás; 
 
 | Pantalla | Teclas |
 |---|---|
-| Inicio | `1`–`6` o `enter` elegir · `/` buscar · `q` salir |
+| Inicio | `1`–`7` o `enter` elegir · `/` buscar · `q` salir |
+| Añadir extensiones | `enter` instalar, actualizar o quitar · `/` filtrar · `l` idioma · `n` ocultar NSFW · `r` añadir repositorio · `u` actualizar catálogo |
 | Biblioteca | `enter` abrir · `d` quitar · `/` buscar |
 | Búsqueda | escribe y pulsa `enter` · `tab`/`↓` ir a resultados · `/` editar · `b` biblioteca |
 | Manga | `enter` leer · `c` continuar · `f` favorito · `e` estado · `a` vincular/sincronizar AniList · `A` re-vincular · `r` recargar |
@@ -240,14 +255,15 @@ flowchart LR
         API --> Shims["shims de Android"]
     end
     Core <-- "JSON por stdin/stdout" --> Loader
-    Loader --> Ext["extensiones de Keiyoushi<br/>(.jar)"]
+    Loader --> Ext["extensiones de Mihon<br/>(.jar)"]
     Ext -- HTTP --> Sitios[("sitios de manga")]
     AL -- GraphQL --> AniList[("AniList")]
     Render --> Term["terminal<br/>Sixel / Kitty"]
 ```
 
-- **Catálogo.** El índice de Keiyoushi (`index.pb`, protobuf con gzip) lista ~1440 extensiones y
-  ~2350 fuentes. Han Thỏ lo descarga e instala los `.jar` de cada extensión en `~/.hantho`.
+- **Catálogo.** Cada repositorio que añades publica un índice (`index.pb`, protobuf con gzip, el
+  formato de Keiyoushi) con sus extensiones y fuentes. Han Thỏ lo descarga e instala los `.jar` de
+  las extensiones que eliges en `~/.hantho`.
 - **ext-host.** Las extensiones son clases JVM normales (ya convertidas desde dex), pero esperan
   vivir en Android. `ext-host` provee la implementación real de la API
   [`extensions-lib`](https://github.com/keiyoushi/extensions-lib) 1.6 (la publicada son solo stubs),
@@ -280,9 +296,8 @@ Más detalles técnicos en [`NOTES.md`](NOTES.md).
 ## Aviso legal
 
 Han Thỏ es un **lector**: no aloja, distribuye ni indexa contenido. Todo el material lo sirven
-sitios de terceros a través de extensiones mantenidas por la comunidad de
-[Keiyoushi](https://github.com/keiyoushi/extensions), que Han Thỏ descarga desde su repositorio
-público y no modifica. Los autores de Han Thỏ no tienen relación con esos sitios ni con las
+sitios de terceros a través de extensiones de terceros. Han Thỏ no trae ningún repositorio ni extensión: cada
+usuario añade los que elige, y Han Thỏ los descarga tal cual, sin modificarlos. Los autores de Han Thỏ no tienen relación con esos sitios ni con las
 extensiones, y no se hacen responsables de su contenido ni por su legalidad en tu país.
 
 Respeta los derechos de autor y, cuando puedas, apoya a los autores leyendo y comprando por canales
@@ -291,7 +306,7 @@ oficiales. Han Thỏ no está afiliado a Mihon, Tachiyomi, Keiyoushi ni AniList.
 ## Contribuir
 
 ¡Bienvenido! Echa un vistazo a [`CONTRIBUTING.md`](CONTRIBUTING.md). Aquí no se aceptan peticiones de fuentes nuevas:
-eso va al [repositorio de Keiyoushi](https://github.com/keiyoushi/extensions).
+eso va al repositorio de extensiones que uses.
 
 ## Créditos
 

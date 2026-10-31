@@ -61,6 +61,10 @@ enum Msg {
     BackupRead(Result<(Backup, Vec<catalog::Extension>)>),
     /// Extensiones instaladas y cargadas tras importar un backup (y los errores, por nombre).
     BackupExtensions(Vec<Installed>, Vec<LoadedSource>, Vec<String>),
+    Catalog(Result<Vec<catalog::Extension>>),
+    RepoAdded(Result<(String, usize)>),
+    /// Paquete, y la extensión instalada con sus fuentes ya cargadas en el host.
+    ExtInstalled(String, Result<(Installed, Vec<LoadedSource>)>),
 }
 
 /// Una página descargada. En modo Sixel se codifica con nuestro render (`render.rs`) para el
@@ -152,6 +156,7 @@ enum Screen {
     Home,
     Library,
     Extensions,
+    AddExtensions,
     AniList,
     Backup,
     Search,
@@ -286,6 +291,50 @@ struct App {
     dirty: bool,
     installed: Vec<Installed>,
     extensions_state: ListState,
+    /// «Añadir extensiones»: catálogo de los repositorios del usuario.
+    add: AddExtensions,
+}
+
+#[derive(Default)]
+struct AddExtensions {
+    repos: Vec<String>,
+    catalog: Option<Vec<catalog::Extension>>,
+    loading: bool,
+    filter: String,
+    editing: bool,
+    lang: Option<String>,
+    hide_nsfw: bool,
+    state: ListState,
+    /// URL del repositorio que se está escribiendo (si está abierto ese cuadro).
+    repo_input: Option<String>,
+    busy: HashSet<String>,
+}
+
+impl AddExtensions {
+    /// Índices del catálogo que pasan los filtros.
+    fn view(&self) -> Vec<usize> {
+        let Some(cat) = &self.catalog else { return Vec::new() };
+        let q = self.filter.to_lowercase();
+        cat.iter()
+            .enumerate()
+            .filter(|(_, e)| q.is_empty() || e.name.to_lowercase().contains(&q))
+            .filter(|(_, e)| self.lang.as_ref().is_none_or(|l| e.langs().contains(&l.as_str())))
+            .filter(|(_, e)| !(self.hide_nsfw && e.content_warning == 3))
+            .map(|(i, _)| i)
+            .collect()
+    }
+
+    fn langs(&self) -> Vec<String> {
+        let mut langs: Vec<String> =
+            self.catalog.iter().flatten().flat_map(|e| e.langs().into_iter().map(String::from)).collect();
+        langs.sort();
+        langs.dedup();
+        langs
+    }
+
+    fn reselect(&mut self) {
+        self.state.select((!self.view().is_empty()).then_some(0));
+    }
 }
 
 impl App {
@@ -351,6 +400,7 @@ impl App {
             dirty: true,
             extensions_state: ListState::default().with_selected((!installed.is_empty()).then_some(0)),
             installed,
+            add: AddExtensions { repos: catalog::repos(), ..Default::default() },
         }
     }
 
@@ -426,7 +476,7 @@ impl App {
                 self.status = format!("{} fuentes listas", sources.len())
                     + &if errors > 0 { format!(" ({errors} extensiones no han cargado)") } else { String::new() };
                 if sources.is_empty() {
-                    self.status = "no hay extensiones: instálalas con `hantho ext install --lang es`".into();
+                    self.status = "no hay extensiones: añádelas desde «Añadir extensiones» en el menú".into();
                 }
                 self.host = Some(host);
                 self.sources = sources;
@@ -543,6 +593,43 @@ impl App {
                 }
                 self.status = "importación terminada ✿".into();
             }
+            Msg::Catalog(res) => {
+                self.add.loading = false;
+                match res {
+                    Ok(cat) => {
+                        self.status = format!("{} extensiones en {} repositorios", cat.len(), self.add.repos.len());
+                        self.add.catalog = Some(cat);
+                        self.add.reselect();
+                    }
+                    Err(e) => self.status = format!("✕ {e}"),
+                }
+            }
+            Msg::RepoAdded(res) => {
+                self.add.loading = false;
+                match res {
+                    Ok((url, n)) => {
+                        self.add.repo_input = None;
+                        self.open_add_extensions();
+                        self.status = format!("✓ repositorio añadido: {n} extensiones · {url}");
+                    }
+                    Err(e) => self.status = format!("✕ {e}"),
+                }
+            }
+            Msg::ExtInstalled(pkg, res) => {
+                self.add.busy.remove(&pkg);
+                match res {
+                    Ok((ext, sources)) => {
+                        self.status = format!("✓ {} instalada · {} fuentes nuevas", ext.name, sources.len());
+                        self.sources.retain(|s| !sources.iter().any(|n| n.info.id == s.info.id));
+                        self.sources.extend(sources);
+                        self.installed = crate::ext::list();
+                    }
+                    Err(e) => {
+                        self.installed = crate::ext::list();
+                        self.status = format!("✕ {e}");
+                    }
+                }
+            }
             Msg::AutoLink(source_id, url, title, res) => self.on_auto_link(&source_id, &url, &title, res),
             Msg::AnilistLogin(res) => {
                 self.anilist_login = false;
@@ -567,8 +654,10 @@ impl App {
         }
         match self.screen {
             Screen::Home => self.key_home(key),
+            Screen::AddExtensions => self.key_add_extensions(key),
             Screen::Extensions => match key.code {
                 KeyCode::Esc | KeyCode::Char('q') | KeyCode::Backspace => self.screen = Screen::Home,
+                KeyCode::Char('a') => self.open_add_extensions(),
                 KeyCode::Up | KeyCode::Char('k') => select_prev(&mut self.extensions_state),
                 KeyCode::Down | KeyCode::Char('j') => select_next(&mut self.extensions_state, self.installed.len()),
                 _ => {}
@@ -593,6 +682,9 @@ impl App {
             Screen::AnilistPick => self.anilist_matches.is_none(),
             Screen::AniList => self.anilist_login || anilist_auth::client_id().is_none(),
             Screen::Backup => self.backup_busy,
+            Screen::AddExtensions => {
+                self.add.loading || self.add.editing || self.add.repo_input.is_some() || !self.add.busy.is_empty()
+            }
             Screen::Manga => self.details.is_none() || self.chapter_input.is_some(),
             Screen::Reader => self.reader.as_ref().is_some_and(|r| {
                 r.error.is_none() && r.images.get(&r.page).is_none_or(|p| self.sixel && p.encoded.is_none())
@@ -643,7 +735,7 @@ impl App {
     }
 
     fn key_home(&mut self, key: KeyEvent) {
-        const ITEMS: usize = 6;
+        const ITEMS: usize = 7;
         let choice = match key.code {
             KeyCode::Char('q') | KeyCode::Esc => {
                 self.quit = true;
@@ -657,7 +749,7 @@ impl App {
                 self.home.selected = (self.home.selected + 1) % ITEMS;
                 return;
             }
-            KeyCode::Char(c @ '1'..='6') => c as usize - '1' as usize,
+            KeyCode::Char(c @ '1'..='7') => c as usize - '1' as usize,
             KeyCode::Enter => self.home.selected,
             KeyCode::Char('/') => 1,
             _ => return,
@@ -673,16 +765,145 @@ impl App {
                 self.installed = crate::ext::list();
                 self.screen = Screen::Extensions;
             }
-            3 => {
+            3 => self.open_add_extensions(),
+            4 => {
                 self.anilist_user = Credentials::load().map(|c| c.user_name);
                 self.screen = Screen::AniList;
             }
-            4 => {
+            5 => {
                 self.backup_files = backup::find_backups();
                 self.backup_state.select(Some(0));
                 self.screen = Screen::Backup;
             }
             _ => self.quit = true,
+        }
+    }
+
+    fn open_add_extensions(&mut self) {
+        self.screen = Screen::AddExtensions;
+        self.installed = crate::ext::list();
+        self.add.repos = catalog::repos();
+        if self.add.repos.is_empty() {
+            self.add.catalog = None;
+            self.add.repo_input = Some(String::new());
+            return;
+        }
+        self.add.loading = true;
+        let tx = self.tx.clone();
+        tokio::spawn(async move {
+            let _ = tx.send(Msg::Catalog(catalog::load().await));
+        });
+    }
+
+    fn key_add_extensions(&mut self, key: KeyEvent) {
+        let add = &mut self.add;
+        if let Some(input) = add.repo_input.as_mut() {
+            match key.code {
+                KeyCode::Esc => {
+                    add.repo_input = None;
+                    if add.repos.is_empty() {
+                        self.screen = Screen::Home;
+                    }
+                }
+                KeyCode::Backspace => {
+                    input.pop();
+                }
+                KeyCode::Char(c) => input.push(c),
+                KeyCode::Enter if !input.trim().is_empty() && !add.loading => {
+                    let url = input.clone();
+                    add.loading = true;
+                    self.status = "comprobando el repositorio…".into();
+                    let tx = self.tx.clone();
+                    tokio::spawn(async move {
+                        let _ = tx.send(Msg::RepoAdded(catalog::add_repo(&url).await));
+                    });
+                }
+                _ => {}
+            }
+            return;
+        }
+        if add.editing {
+            match key.code {
+                KeyCode::Esc | KeyCode::Enter | KeyCode::Down => add.editing = false,
+                KeyCode::Backspace => {
+                    add.filter.pop();
+                }
+                KeyCode::Char(c) => add.filter.push(c),
+                _ => {}
+            }
+            add.reselect();
+            return;
+        }
+        let view = add.view();
+        match key.code {
+            KeyCode::Esc | KeyCode::Char('q') | KeyCode::Backspace => self.screen = Screen::Home,
+            KeyCode::Up | KeyCode::Char('k') => select_prev(&mut add.state),
+            KeyCode::Down | KeyCode::Char('j') => select_next(&mut add.state, view.len()),
+            KeyCode::PageDown => page_move(&mut add.state, view.len(), 20),
+            KeyCode::PageUp => page_move(&mut add.state, view.len(), -20),
+            KeyCode::Char('/') => add.editing = true,
+            KeyCode::Char('l') => {
+                let langs = add.langs();
+                add.lang = match &add.lang {
+                    None => langs.first().cloned(),
+                    Some(l) => langs.iter().skip_while(|x| *x != l).nth(1).cloned(),
+                };
+                add.reselect();
+            }
+            KeyCode::Char('n') => {
+                add.hide_nsfw = !add.hide_nsfw;
+                add.reselect();
+            }
+            KeyCode::Char('r') => add.repo_input = Some(String::new()),
+            KeyCode::Char('u') if !add.loading => {
+                add.loading = true;
+                self.status = "actualizando el catálogo…".into();
+                let tx = self.tx.clone();
+                tokio::spawn(async move {
+                    let _ = tx.send(Msg::Catalog(catalog::update().await));
+                });
+            }
+            KeyCode::Enter => {
+                let Some(ext) = add.state.selected().and_then(|i| view.get(i)).and_then(|&i| add.catalog.as_ref()?.get(i)).cloned()
+                else {
+                    return;
+                };
+                if add.busy.contains(&ext.package_name) {
+                    return;
+                }
+                let current = self.installed.iter().find(|i| i.pkg == ext.package_name);
+                // Instalada y al día: enter la quita. Si hay versión nueva, enter actualiza.
+                if current.is_some_and(|i| i.version_code >= ext.version_code) {
+                    match crate::ext::uninstall(&ext.package_name) {
+                        Ok(_) => {
+                            let ids: Vec<String> = ext.sources.iter().map(|s| s.id.to_string()).collect();
+                            self.sources.retain(|s| !ids.contains(&s.info.id));
+                            self.installed = crate::ext::list();
+                            self.status = format!("{} desinstalada", ext.name);
+                        }
+                        Err(e) => self.status = format!("✕ {e}"),
+                    }
+                    return;
+                }
+                add.busy.insert(ext.package_name.clone());
+                self.status = format!("instalando {}…", ext.name);
+                let (tx, host) = (self.tx.clone(), self.host.clone());
+                tokio::spawn(async move {
+                    let res = async {
+                        let installed = crate::ext::install(&ext).await?;
+                        // Sin host todavía: se cargará con el resto cuando arranque
+                        let Some(host) = host else { return Ok((installed, Vec::new())) };
+                        let (sources, errors) = host.load_all(std::slice::from_ref(&installed)).await;
+                        if let Some((_, e)) = errors.first() {
+                            anyhow::bail!("{} se ha instalado, pero no carga: {}", installed.name, search::short_error(e));
+                        }
+                        Ok((installed, sources))
+                    }
+                    .await;
+                    let _ = tx.send(Msg::ExtInstalled(ext.package_name.clone(), res));
+                });
+            }
+            _ => {}
         }
     }
 
@@ -938,7 +1159,8 @@ impl App {
                         tokio::spawn(async move {
                             let res = async {
                                 let backup = tokio::task::spawn_blocking(move || backup::read_file(&path)).await??;
-                                Ok((backup, catalog::load().await?))
+                                // Sin repositorios se importa igual, solo que sin instalar extensiones
+                                Ok((backup, catalog::load().await.unwrap_or_default()))
                             }
                             .await;
                             let _ = tx.send(Msg::BackupRead(res));
@@ -1462,7 +1684,7 @@ impl App {
             format!("✓ {} vinculados con AniList", s.anilist_links),
         ];
         if !s.unknown_sources.is_empty() {
-            self.backup_report.push(format!("! sin extensión en Keiyoushi: {}", s.unknown_sources.join(", ")));
+            self.backup_report.push(format!("! sin extensión en tus repositorios: {}", s.unknown_sources.join(", ")));
         }
         let (Some(host), false) = (self.host.clone(), s.needed_extensions.is_empty()) else {
             self.backup_busy = false;
@@ -1615,6 +1837,7 @@ impl App {
             Screen::Reader => self.draw_reader(f),
             Screen::AnilistPick => self.draw_anilist_pick(f),
             Screen::Extensions => self.draw_extensions(f),
+            Screen::AddExtensions => self.draw_add_extensions(f),
             Screen::Backup => self.draw_backup(f),
             Screen::AniList => self.draw_anilist(f),
         }
@@ -1633,6 +1856,15 @@ impl App {
             MenuItem { icon: "♡", label: "Biblioteca", detail: format!("{favs} favoritos") },
             MenuItem { icon: "⌕", label: "Buscar", detail: sources },
             MenuItem { icon: "✦", label: "Extensiones", detail: format!("{} instaladas", self.installed.len()) },
+            MenuItem {
+                icon: "✚",
+                label: "Añadir extensiones",
+                detail: match self.add.repos.len() {
+                    0 => "sin repositorios".into(),
+                    1 => "1 repositorio".into(),
+                    n => format!("{n} repositorios"),
+                },
+            },
             MenuItem { icon: "☁", label: "AniList", detail: anilist },
             MenuItem { icon: "⇄", label: "Backup Mihon", detail: "importar / exportar".into() },
             MenuItem { icon: "✕", label: "Salir", detail: String::new() },
@@ -1652,7 +1884,7 @@ impl App {
                 Span::raw(" elegir  ").fg(MUTED),
                 Span::raw("enter").fg(PINK).bold(),
                 Span::raw(" abrir  ").fg(MUTED),
-                Span::raw("1-5").fg(PINK).bold(),
+                Span::raw("1-7").fg(PINK).bold(),
                 Span::raw(" atajos  ").fg(MUTED),
                 Span::raw("q").fg(PINK).bold(),
                 Span::raw(" salir").fg(MUTED),
@@ -1738,9 +1970,116 @@ impl App {
             f,
             status_area,
             "EXTENSIONES",
-            "instala más con `hantho ext install <nombre>` o `--lang es`",
-            &[("↑↓", "mover"), ("esc", "menú")],
+            if self.installed.is_empty() { "todavía no tienes ninguna: pulsa a para añadir" } else { "a para añadir más" },
+            &[("↑↓", "mover"), ("a", "añadir"), ("esc", "menú")],
         );
+    }
+
+    fn draw_add_extensions(&mut self, f: &mut Frame) {
+        let [input_area, list_area, status_area] =
+            Layout::vertical([Constraint::Length(3), Constraint::Min(1), Constraint::Length(1)]).areas(f.area());
+        let tick = self.tick;
+        let add = &mut self.add;
+        let view = add.view();
+
+        let cursor = if add.editing && tick % 16 < 9 { "▏" } else { " " };
+        let mut filter = vec![
+            if add.filter.is_empty() && !add.editing {
+                Span::raw("/ para filtrar por nombre").fg(FAINT).italic()
+            } else {
+                Span::raw(add.filter.clone()).fg(TEXT)
+            },
+            Span::raw(cursor).fg(PINK),
+            Span::raw("   idioma: ").fg(MUTED),
+            Span::raw(add.lang.clone().unwrap_or_else(|| "todos".into())).fg(LAVENDER),
+        ];
+        if add.hide_nsfw {
+            filter.push(Span::raw("  · sin nsfw").fg(MUTED));
+        }
+        let input_block = if add.editing { theme::block_focused("⌕ filtrar") } else { theme::block("⌕ filtrar") };
+        f.render_widget(Paragraph::new(Line::from(filter)).block(input_block), input_area);
+
+        let catalog = add.catalog.as_deref().unwrap_or_default();
+        let items: Vec<ListItem> = view
+            .iter()
+            .map(|&i| {
+                let e = &catalog[i];
+                let installed = self.installed.iter().find(|x| x.pkg == e.package_name);
+                let (mark, color) = if add.busy.contains(&e.package_name) {
+                    (format!("{} ", theme::spinner(tick)), PINK)
+                } else if installed.is_some_and(|x| x.version_code < e.version_code) {
+                    ("↑ ".to_string(), PEACH)
+                } else if installed.is_some() {
+                    ("✓ ".to_string(), MINT)
+                } else {
+                    ("  ".to_string(), FAINT)
+                };
+                let (label, warn) = match e.content_warning {
+                    3 => ("nsfw", ERROR),
+                    2 => ("mixto", PEACH),
+                    _ => ("apto", MINT),
+                };
+                let langs: String = e.langs().join(",").chars().take(9).collect();
+                ListItem::new(Line::from(vec![
+                    Span::raw(mark).fg(color),
+                    Span::raw(format!("{:<34}", e.name)).fg(if installed.is_some() { TEXT } else { MUTED }),
+                    Span::raw(format!("{:<9}", e.version_name)).fg(FAINT),
+                    Span::raw(format!("{langs:<10}")).fg(LAVENDER),
+                    Span::raw(label).fg(warn),
+                ]))
+            })
+            .collect();
+        let title = match &add.catalog {
+            Some(cat) => {
+                let repos = if add.repos.len() == 1 { "1 repositorio".to_string() } else { format!("{} repositorios", add.repos.len()) };
+                format!("✚ añadir extensiones · {} de {} · {repos}", view.len(), cat.len())
+            }
+            None => "✚ añadir extensiones".into(),
+        };
+        f.render_stateful_widget(theme::highlight(List::new(items).block(theme::block_focused(&title))), list_area, &mut add.state);
+        if add.loading && add.catalog.is_none() && add.repo_input.is_none() {
+            let [center] = Layout::vertical([Constraint::Length(1)]).flex(Flex::Center).areas(list_area);
+            let msg = Line::from(vec![Span::raw(theme::spinner(tick)).fg(PINK), Span::raw(" cargando el catálogo…").fg(MUTED)]);
+            f.render_widget(Paragraph::new(msg).centered(), center);
+        }
+
+        if let Some(input) = &add.repo_input {
+            let [card] = Layout::horizontal([Constraint::Length(84.min(list_area.width))]).flex(Flex::Center).areas(list_area);
+            let [card] = Layout::vertical([Constraint::Length(12.min(card.height))]).flex(Flex::Center).areas(card);
+            let cursor = if tick % 16 < 9 { "▏" } else { " " };
+            // Solo el final de la URL si es más larga que el cuadro
+            let shown: String = {
+                let chars: Vec<char> = input.chars().collect();
+                chars[chars.len().saturating_sub(70)..].iter().collect()
+            };
+            let mut lines = vec![
+                Line::raw(""),
+                Line::from("  Han Thỏ no trae extensiones: añade el repositorio que quieras usar.").fg(TEXT),
+                Line::raw(""),
+                Line::from("  Vale la URL de su index.pb o index.min.json, la del repo en GitHub o un").fg(MUTED),
+                Line::from("  enlace tachiyomi://add-repo. Tiene que publicar las extensiones en .jar").fg(MUTED),
+                Line::from("  (formato Keiyoushi): las que solo traen .apk no se pueden cargar.").fg(MUTED),
+                Line::raw(""),
+                Line::from(vec![Span::raw("  URL: ").fg(MUTED), Span::raw(shown).fg(PINK).bold(), Span::raw(cursor).fg(PINK)]),
+            ];
+            if add.loading {
+                lines.push(Line::raw(""));
+                lines.push(Line::from(vec![Span::raw(format!("  {} ", theme::spinner(tick))).fg(PINK), Span::raw("comprobando…").fg(MUTED)]));
+            } else if !add.repos.is_empty() {
+                lines.push(Line::raw(""));
+                lines.push(Line::from(format!("  ya tienes {} repositorios añadidos", add.repos.len())).fg(FAINT));
+            }
+            f.render_widget(Clear, card);
+            f.render_widget(Paragraph::new(lines).block(theme::block_focused("✚ añadir repositorio")), card);
+            theme::status_bar(f, status_area, "EXTENSIONES", &self.status, &[("enter", "añadir"), ("esc", "cancelar")]);
+            return;
+        }
+        let keys: &[(&str, &str)] = if add.editing {
+            &[("enter", "listo"), ("esc", "listo")]
+        } else {
+            &[("enter", "instalar/quitar"), ("/", "filtrar"), ("l", "idioma"), ("n", "nsfw"), ("r", "repo"), ("esc", "menú")]
+        };
+        theme::status_bar(f, status_area, "EXTENSIONES", &self.status, keys);
     }
 
     fn draw_anilist(&mut self, f: &mut Frame) {
@@ -2313,7 +2652,7 @@ mod tests {
             "✓ 48 favoritos nuevos · 2 ya estaban".into(),
             "✓ 3120 capítulos marcados como leídos".into(),
             "✓ 31 vinculados con AniList".into(),
-            "! sin extensión en Keiyoushi: Fuente Rara".into(),
+            "! sin extensión en tus repositorios: Fuente Rara".into(),
             "✓ 6 extensiones instaladas y cargadas".into(),
         ];
         app.screen = Screen::Backup;
@@ -2336,7 +2675,7 @@ mod tests {
             .map(|s| Installed {
                 pkg: format!("eu.kanade.tachiyomi.extension.es.{}", s.info.name.to_lowercase().replace(' ', "")),
                 name: s.info.name.clone(),
-                version_code: 1,
+                version_code: 12,
                 version_name: "1.4.12".into(),
                 content_warning: 1,
                 langs: vec!["es".into()],
@@ -2376,11 +2715,48 @@ mod tests {
         terminal.draw(|f| app.draw(f)).unwrap();
         theme::dump_buffer(terminal.backend().buffer(), &format!("{dir}/search.json"));
 
-        // Extensiones
-        app.extensions_state.select(Some(1));
-        app.screen = Screen::Extensions;
+        // Añadir extensiones
+        let cat_ext = |name: &str, langs: &[&str], version: i64, warning: i32| catalog::Extension {
+            name: name.into(),
+            package_name: format!("eu.kanade.tachiyomi.extension.es.{}", name.to_lowercase().replace(' ', "")),
+            version_code: version,
+            version_name: format!("1.4.{version}"),
+            content_warning: warning,
+            sources: langs
+                .iter()
+                .map(|l| catalog::Source { id: 0, name: name.into(), language: l.to_string(), home_url: String::new() })
+                .collect(),
+            ..Default::default()
+        };
+        app.add.repos = vec!["https://example.org/repo/index.pb".into()];
+        app.add.catalog = Some(vec![
+            cat_ext("Ikigai Mangas", &["es"], 12, 1),
+            cat_ext("InManga", &["es"], 12, 1),
+            cat_ext("Lector Manga", &["es"], 8, 2),
+            cat_ext("LectorTMO", &["es"], 13, 1),
+            cat_ext("Manga Crab", &["es"], 4, 1),
+            cat_ext("Manga TV", &["es"], 12, 1),
+            cat_ext("MangaDex", &["all"], 16, 2),
+            cat_ext("Mangas.in", &["es"], 6, 1),
+            cat_ext("Olympus Scanlation", &["es"], 12, 1),
+            cat_ext("Plot Twist No Fansub", &["es"], 3, 1),
+            cat_ext("Tu Manga Online", &["es"], 9, 2),
+            cat_ext("Visor Ikigai", &["es"], 5, 1),
+        ]);
+        app.add.lang = Some("es".into());
+        app.add.busy.insert("eu.kanade.tachiyomi.extension.es.mangacrab".into());
+        app.add.state.select(Some(3));
+        app.status = "instalando Manga Crab…".into();
+        app.screen = Screen::AddExtensions;
         terminal.draw(|f| app.draw(f)).unwrap();
-        theme::dump_buffer(terminal.backend().buffer(), &format!("{dir}/extensions.json"));
+        theme::dump_buffer(terminal.backend().buffer(), &format!("{dir}/add_extensions.json"));
+        app.add.busy.clear();
+        app.add.repos.clear();
+        app.add.repo_input = Some("https://github.com/".into());
+        app.status = String::new();
+        terminal.draw(|f| app.draw(f)).unwrap();
+        theme::dump_buffer(terminal.backend().buffer(), &format!("{dir}/add_repo.json"));
+        app.add.repo_input = None;
 
         // AniList
         app.screen = Screen::AniList;

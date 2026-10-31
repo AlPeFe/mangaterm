@@ -193,7 +193,8 @@ def main():
             "capitulos": ("manga", "hantho · Grand Blue"),
             "anilist": ("anilist_pick", "hantho · vincular con AniList"),
             "backup": ("backup", "hantho · backup de Mihon"),
-            "extensiones": ("extensions", "hantho · extensiones"),
+            "anadir_extensiones": ("add_extensions", "hantho · añadir extensiones"),
+            "repositorio": ("add_repo", "hantho · añadir repositorio"),
         }
         for out, (name, title) in shots.items():
             window(preview.render(load(name)), title).save(OUT / f"{out}.png")

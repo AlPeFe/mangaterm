@@ -1,12 +1,14 @@
-//! Catálogo de extensiones de Keiyoushi (`index.pb`: protobuf comprimido con gzip).
+//! Catálogo de extensiones: los repositorios que añade el usuario (`index.pb`: protobuf
+//! comprimido con gzip, el formato de Keiyoushi, que publica cada extensión también como .jar).
+//! Han Thỏ no trae ningún repositorio: como en Mihon, cada usuario añade los suyos.
 //! Schema oficial en `proto/index.proto`; aquí se replica a mano con prost.
 
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use flate2::read::GzDecoder;
 use prost::Message;
+use std::hash::{Hash, Hasher};
 use std::io::Read;
-
-pub const INDEX_URL: &str = "https://raw.githubusercontent.com/keiyoushi/extensions/repo/index.pb";
+use std::path::PathBuf;
 
 #[derive(Clone, PartialEq, Message)]
 pub struct Index {
@@ -90,20 +92,135 @@ impl Extension {
     }
 }
 
-pub async fn update() -> Result<Vec<Extension>> {
-    let bytes = reqwest::get(INDEX_URL).await?.error_for_status()?.bytes().await?;
-    let exts = decode(&bytes)?;
+/// Repositorios añadidos por el usuario (URLs de `index.pb`).
+pub fn repos() -> Vec<String> {
+    std::fs::read(crate::paths::repos_file())
+        .ok()
+        .and_then(|b| serde_json::from_slice(&b).ok())
+        .unwrap_or_default()
+}
+
+fn save_repos(repos: &[String]) -> Result<()> {
     std::fs::create_dir_all(crate::paths::home())?;
-    std::fs::write(crate::paths::index_file(), &bytes)?;
+    std::fs::write(crate::paths::repos_file(), serde_json::to_vec_pretty(repos)?)?;
+    Ok(())
+}
+
+/// Acepta lo que el usuario suele tener a mano y lo convierte en la URL del `index.pb`:
+/// la URL del índice, la de `index.min.json` (Mihon), la carpeta del repo, un enlace
+/// `tachiyomi://add-repo?url=…` o `https://github.com/<dueño>/<repo>` (rama `repo`).
+pub fn normalize_repo(input: &str) -> Result<String> {
+    let mut url = input.trim().trim_matches(['"', '\'', '<', '>']).to_string();
+    if let Some(i) = url.find("url=").filter(|_| url.contains("://add-repo")) {
+        url = url[i + 4..].replace("%3A", ":").replace("%2F", "/");
+    }
+    if !url.starts_with("https://") && !url.starts_with("http://") {
+        bail!("no parece una URL: {input}");
+    }
+    let url = url.trim_end_matches('/');
+    if url.ends_with(".pb") {
+        return Ok(url.to_string());
+    }
+    if let Some(base) = url.strip_suffix("index.min.json").or_else(|| url.strip_suffix("index.json")) {
+        return Ok(format!("{base}index.pb"));
+    }
+    if let Some(path) = url.strip_prefix("https://github.com/") {
+        let parts: Vec<&str> = path.split('/').collect();
+        if parts.len() == 2 {
+            return Ok(format!("https://raw.githubusercontent.com/{}/{}/repo/index.pb", parts[0], parts[1]));
+        }
+    }
+    Ok(format!("{url}/index.pb"))
+}
+
+fn cache_path(url: &str) -> PathBuf {
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    url.hash(&mut h);
+    crate::paths::repos_dir().join(format!("{:016x}.pb", h.finish()))
+}
+
+async fn fetch(url: &str) -> Result<Vec<Extension>> {
+    let bytes = reqwest::get(url).await?.error_for_status()?.bytes().await?;
+    let exts = decode(&bytes).with_context(|| format!("{url} no es un índice de extensiones válido"))?;
+    if !exts.iter().any(|e| e.jar_url().is_some()) {
+        bail!("{url} no publica extensiones en .jar (Han Thỏ no puede cargar .apk)");
+    }
+    std::fs::create_dir_all(crate::paths::repos_dir())?;
+    std::fs::write(cache_path(url), &bytes)?;
     Ok(exts)
 }
 
-/// Lee el índice local; si no existe todavía, lo descarga.
-pub async fn load() -> Result<Vec<Extension>> {
-    match std::fs::read(crate::paths::index_file()) {
-        Ok(bytes) => decode(&bytes),
-        Err(_) => update().await,
+/// Añade un repositorio: lo descarga para comprobar que vale. Devuelve la URL y cuántas extensiones trae.
+pub async fn add_repo(input: &str) -> Result<(String, usize)> {
+    let url = normalize_repo(input)?;
+    let n = fetch(&url).await?.len();
+    let mut all = repos();
+    if !all.contains(&url) {
+        all.push(url.clone());
+        save_repos(&all)?;
     }
+    Ok((url, n))
+}
+
+pub fn remove_repo(input: &str) -> Result<bool> {
+    let url = normalize_repo(input).unwrap_or_else(|_| input.to_string());
+    let mut all = repos();
+    let before = all.len();
+    all.retain(|r| r != &url && r != input);
+    if all.len() == before {
+        return Ok(false);
+    }
+    let _ = std::fs::remove_file(cache_path(&url));
+    save_repos(&all)?;
+    Ok(true)
+}
+
+const NO_REPOS: &str = "no hay repositorios de extensiones: añade uno en «Añadir extensiones» o con `hantho ext repo add <url>`";
+
+/// Descarga de nuevo el índice de todos los repositorios.
+pub async fn update() -> Result<Vec<Extension>> {
+    let repos = repos();
+    if repos.is_empty() {
+        bail!(NO_REPOS);
+    }
+    let mut lists = Vec::new();
+    for url in &repos {
+        lists.push(fetch(url).await?);
+    }
+    Ok(merge(lists))
+}
+
+/// Junta los índices locales de todos los repositorios; descarga los que falten.
+pub async fn load() -> Result<Vec<Extension>> {
+    let repos = repos();
+    if repos.is_empty() {
+        bail!(NO_REPOS);
+    }
+    let mut lists = Vec::new();
+    for url in &repos {
+        let cached = std::fs::read(cache_path(url)).ok().and_then(|b| decode(&b).ok());
+        lists.push(match cached {
+            Some(exts) => exts,
+            None => fetch(url).await?,
+        });
+    }
+    Ok(merge(lists))
+}
+
+/// Si dos repositorios traen el mismo paquete, gana la versión más nueva.
+fn merge(lists: Vec<Vec<Extension>>) -> Vec<Extension> {
+    let mut by_pkg: std::collections::HashMap<String, Extension> = std::collections::HashMap::new();
+    for e in lists.into_iter().flatten() {
+        match by_pkg.get(&e.package_name) {
+            Some(old) if old.version_code >= e.version_code => {}
+            _ => {
+                by_pkg.insert(e.package_name.clone(), e);
+            }
+        }
+    }
+    let mut all: Vec<Extension> = by_pkg.into_values().collect();
+    all.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    all
 }
 
 fn decode(gz: &[u8]) -> Result<Vec<Extension>> {
@@ -111,4 +228,23 @@ fn decode(gz: &[u8]) -> Result<Vec<Extension>> {
     GzDecoder::new(gz).read_to_end(&mut raw).context("index.pb no es gzip válido")?;
     let index = Index::decode(raw.as_slice()).context("index.pb no es un protobuf válido")?;
     Ok(index.extension_list.map(|l| l.extensions).unwrap_or_default())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::normalize_repo;
+
+    #[test]
+    fn repo_urls() {
+        let pb = "https://raw.githubusercontent.com/dueño/ext/repo/index.pb";
+        assert_eq!(normalize_repo(pb).unwrap(), pb);
+        assert_eq!(normalize_repo("https://raw.githubusercontent.com/dueño/ext/repo/index.min.json").unwrap(), pb);
+        assert_eq!(normalize_repo("https://raw.githubusercontent.com/dueño/ext/repo/").unwrap(), pb);
+        assert_eq!(normalize_repo("https://github.com/dueño/ext").unwrap(), pb);
+        assert_eq!(
+            normalize_repo("tachiyomi://add-repo?url=https%3A%2F%2Fraw.githubusercontent.com%2Fdueño%2Fext%2Frepo%2Findex.min.json").unwrap(),
+            pb
+        );
+        assert!(normalize_repo("no es una url").is_err());
+    }
 }

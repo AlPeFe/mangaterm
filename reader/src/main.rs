@@ -22,7 +22,7 @@ use clap::{Parser, Subcommand};
 use host::Host;
 use search::SearchEvent;
 
-/// Han Thỏ: lector de manga para la terminal, con extensiones de Mihon/Keiyoushi y sync con AniList.
+/// Han Thỏ: lector de manga para la terminal, con extensiones de Mihon (formato Keiyoushi) y sync con AniList.
 #[derive(Parser)]
 #[command(name = "hantho", version)]
 struct Cli {
@@ -102,7 +102,10 @@ enum AnilistCmd {
 
 #[derive(Subcommand)]
 enum ExtCmd {
-    /// Descarga la última versión del catálogo de Keiyoushi
+    /// Gestiona los repositorios de extensiones (Han Thỏ no trae ninguno)
+    #[command(subcommand)]
+    Repo(RepoCmd),
+    /// Descarga la última versión del catálogo de tus repositorios
     Update,
     /// Busca extensiones en el catálogo
     Find {
@@ -124,6 +127,16 @@ enum ExtCmd {
     /// Desinstala una extensión por paquete
     Remove { pkg: String },
     /// Lista las extensiones instaladas
+    List,
+}
+
+#[derive(Subcommand)]
+enum RepoCmd {
+    /// Añade un repositorio (URL de su index.pb, de index.min.json o del repo en GitHub)
+    Add { url: String },
+    /// Quita un repositorio
+    Remove { url: String },
+    /// Lista los repositorios añadidos
     List,
 }
 
@@ -163,7 +176,11 @@ async fn backup_cmd(cmd: BackupCmd) -> Result<()> {
     match cmd {
         BackupCmd::Import { file } => {
             let data = backup::read_file(&file)?;
-            let catalog = catalog::load().await?;
+            // Sin repositorios se importa igual; solo no se pueden instalar las extensiones que falten
+            let catalog = catalog::load().await.unwrap_or_else(|e| {
+                eprintln!("! {e}");
+                Vec::new()
+            });
             let installed: Vec<String> = ext::list().into_iter().map(|i| i.pkg).collect();
             let s = backup::import(&data, &catalog, &installed, &mut lib, &mut log);
             lib.save()?;
@@ -171,7 +188,7 @@ async fn backup_cmd(cmd: BackupCmd) -> Result<()> {
             println!("✓ {} favoritos nuevos · {} ya estaban", s.added, s.merged);
             println!("✓ {} capítulos marcados como leídos · {} vinculados con AniList", s.chapters_read, s.anilist_links);
             if !s.unknown_sources.is_empty() {
-                println!("! sin extensión en Keiyoushi: {}", s.unknown_sources.join(", "));
+                println!("! sin extensión en tus repositorios: {}", s.unknown_sources.join(", "));
             }
             for e in &s.needed_extensions {
                 match ext::install(e).await {
@@ -229,7 +246,7 @@ async fn anilist_cmd(cmd: AnilistCmd) -> Result<()> {
 async fn cli_search(query: String, lang: Option<String>) -> Result<()> {
     let installed = ext::list();
     if installed.is_empty() {
-        bail!("no hay extensiones instaladas; prueba con `hantho ext install --lang es`");
+        bail!("no hay extensiones instaladas: añade un repositorio con `hantho ext repo add <url>` e instálalas con `hantho ext install`");
     }
     let started = std::time::Instant::now();
     let host = Host::spawn().await?;
@@ -265,6 +282,25 @@ async fn ext_cmd(cmd: ExtCmd) -> Result<()> {
         lang.as_ref().is_none_or(|l| e.langs().contains(&l.as_str())) && !(sfw && e.content_warning == 3)
     };
     match cmd {
+        ExtCmd::Repo(RepoCmd::Add { url }) => {
+            let (url, n) = catalog::add_repo(&url).await?;
+            println!("✓ repositorio añadido: {url} ({n} extensiones)");
+        }
+        ExtCmd::Repo(RepoCmd::Remove { url }) => {
+            if !catalog::remove_repo(&url)? {
+                bail!("{url} no está en tus repositorios");
+            }
+            println!("repositorio quitado (las extensiones instaladas siguen funcionando)");
+        }
+        ExtCmd::Repo(RepoCmd::List) => {
+            let repos = catalog::repos();
+            if repos.is_empty() {
+                println!("no hay repositorios: añade uno con `hantho ext repo add <url>`");
+            }
+            for r in repos {
+                println!("{r}");
+            }
+        }
         ExtCmd::Update => {
             let exts = catalog::update().await?;
             println!("catálogo actualizado: {} extensiones", exts.len());

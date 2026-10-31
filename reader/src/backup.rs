@@ -167,7 +167,7 @@ pub struct ImportSummary {
     pub anilist_links: usize,
     /// Extensiones que hay que instalar para abrir lo importado.
     pub needed_extensions: Vec<Extension>,
-    /// Fuentes que ninguna extensión de Keiyoushi provee.
+    /// Fuentes que ninguna extensión de los repositorios provee.
     pub unknown_sources: Vec<String>,
 }
 

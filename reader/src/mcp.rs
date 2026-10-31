@@ -23,7 +23,7 @@ use tokio::sync::{Mutex, OnceCell};
 
 const PROTOCOL_VERSIONS: [&str; 3] = ["2025-06-18", "2025-03-26", "2024-11-05"];
 
-const INSTRUCTIONS: &str = "Han Thỏ es un lector de manga para la terminal con las extensiones de Mihon/Keiyoushi. \
+const INSTRUCTIONS: &str = "Han Thỏ es un lector de manga para la terminal con extensiones de Mihon. \
 Usa search_manga para encontrar un título en todas las fuentes instaladas, library para ver los favoritos del usuario \
 con su progreso, chapters para listar capítulos, mark_read para marcar lo leído (actualiza AniList si el manga está \
 vinculado) y open_reader para abrir el lector en un panel al lado del chat. Los identificadores de fuente (source_id) \
@@ -91,7 +91,7 @@ impl Server {
                 let host = Host::spawn().await?;
                 let (sources, _) = host.load_all(&crate::ext::list()).await;
                 if sources.is_empty() {
-                    bail!("no hay extensiones instaladas; instálalas con `hantho ext install --lang es`");
+                    bail!("no hay extensiones instaladas: el usuario tiene que añadir un repositorio y elegirlas en «Añadir extensiones» (o `hantho ext repo add <url>`)");
                 }
                 Ok((host, sources))
             })

@@ -65,7 +65,7 @@ pub fn status_bar(f: &mut Frame, area: Rect, badge: &str, message: &str, keys: &
     let badge = format!(" {badge} ");
     let badge_width = badge.chars().count() + 1;
     // En paneles estrechos (p. ej. al lado del chat de un agente) el mensaje importa más que los atajos
-    if (area.width as usize) < hints_width + badge_width + 24 {
+    if (area.width as usize) < hints_width + badge_width + 16 {
         hints.clear();
         hints_width = 0;
     }
